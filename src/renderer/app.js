@@ -230,6 +230,7 @@ window.api.onSessionSummary(async (s) => {
     compare = diff === 0 ? `FPS igual à sua média neste jogo (${avg}).` : `${Math.abs(diff)} FPS ${diff > 0 ? 'acima' : 'abaixo'} da sua média neste jogo (${avg}).`;
   } else if (s.fpsAvg != null) compare = 'Primeira sessão com FPS medido neste jogo.';
   $('#sum-compare').textContent = compare;
+  $('#sum-high').innerHTML = (s.highlights || []).map((h) => `<li>${escapeHtml(h)}</li>`).join('');
   $('#sum-note').value = '';
   $('#summary').hidden = false;
 });
@@ -261,7 +262,7 @@ function renderCs2() {
   const show = Boolean(cs2State) || Boolean(game && game.id === 'cs2');
   $('#cs2-card').hidden = !show;
   const s = cs2State;
-  $('#c-cs2').textContent = s ? `${s.mapLabel} ${s.ctScore}-${s.tScore}${s.kills != null ? ` · ${s.kills}/${s.assists}/${s.deaths}` : ''}` : '';
+  $('#c-cs2').textContent = s ? `${s.mapLabel} ${s.ctScore}-${s.tScore}${s.kills != null ? ` · ${s.kills}/${s.assists}/${s.deaths}` : ''}` : (liveCard && liveCard.compact) || '';
   if (!show) return;
   $('#cs2-live').hidden = !s;
   $('#cs2-msg').textContent = s ? '' : CS2_MSG[cs2Status] || 'Aguardando o CS2.';
@@ -285,6 +286,22 @@ window.api.onCs2((s) => {
   cs2State = s; renderCs2();
 });
 window.api.onCs2Status((st) => { cs2Status = st; renderCs2(); });
+
+// ---------- Modo ao vivo de outros jogos ----------
+let liveCard = null;
+function renderLive() {
+  const c = liveCard;
+  $('#live-card').hidden = !c;
+  if (!cs2State) $('#c-cs2').textContent = (c && c.compact) || '';
+  if (!c) return;
+  $('#live-title').textContent = c.title;
+  $('#live-sub').textContent = c.sub || '';
+  $('#live-stats').innerHTML = (c.stats || []).map(([label, value]) => `<div><b>${escapeHtml(value)}</b><span>${escapeHtml(label)}</span></div>`).join('');
+  $('#live-lines').innerHTML = (c.lines || []).filter(Boolean).map((l) => `<div>${escapeHtml(l)}</div>`).join('');
+  $('#live-tip').textContent = c.tip ? `💡 ${c.tip}` : '';
+  $('#live-msg').textContent = c.msg || '';
+}
+window.api.onLive((c) => { liveCard = c; renderLive(); });
 window.api.onCs2Match(() => refreshState());
 
 // ---------- Timers e lembretes ----------
@@ -397,12 +414,12 @@ function tick() {
 // ---------- Início ----------
 (async () => {
   const init = await window.api.getState();
-  games = init.games; state = init.state; cs2State = init.cs2; cs2Status = init.cs2Status;
+  games = init.games; state = init.state; cs2State = init.cs2; cs2Status = init.cs2Status; liveCard = init.live;
   games.forEach((g) => $('#game-select').add(new Option(g.name, g.id)));
   applyMode(init.mode);
   setGame(init.currentGame);
   renderReminders();
-  renderPlaytime(); renderFpsHistory(); renderSessions(); renderCs2();
+  renderPlaytime(); renderFpsHistory(); renderSessions(); renderCs2(); renderLive();
   refreshStats();
   setInterval(tick, 1000);
   setInterval(refreshStats, 2000);

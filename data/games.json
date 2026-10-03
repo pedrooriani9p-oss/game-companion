@@ -71,6 +71,24 @@
     ]
   },
   {
+    "id": "valorant",
+    "name": "VALORANT",
+    "exe": [
+      "VALORANT-Win64-Shipping.exe"
+    ],
+    "tips": [
+      "Pare de andar antes de atirar: em movimento a mira espalha muito.",
+      "Mantenha a mira na altura da cabeça e nos cantos por onde o inimigo vai aparecer.",
+      "Compre junto com o time: se a maioria está sem crédito, todos economizam.",
+      "Use as habilidades para ganhar informação antes de entrar no bomb.",
+      "Jogue perto de um colega para ele poder trocar o abate se você morrer."
+    ],
+    "guides": [
+      "https://tracker.gg/valorant",
+      "https://valorant.fandom.com/wiki/VALORANT_Wiki"
+    ]
+  },
+  {
     "id": "fc26",
     "name": "EA SPORTS FC 26",
     "exe": [

@@ -53,7 +53,8 @@ footer .link { font-size: inherit; padding: 0; }
 .note { display: flex; gap: 8px; align-items: center; justify-content: space-between; font-size: 12px; }
 .note .link { white-space: nowrap; font-size: 11px; }
 .cs2 { border: 1px solid rgba(255,180,84,0.35); }
-.cs2-head { display: flex; justify-content: space-between; align-items: baseline; }
+.cs2-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.cs2-head b { white-space: nowrap; } .cs2-head span { text-align: right; font-size: 12px; }
 .cs2-score { display: flex; justify-content: center; align-items: baseline; gap: 12px; font-size: 15px; margin: 6px 0 2px; }
 .cs2-score b { font-size: 24px; font-variant-numeric: tabular-nums; }
 .cs2-score .ct { color: #8fb8ff; } .cs2-score .t { color: #ffc776; }
@@ -73,3 +74,9 @@ footer .link { font-size: inherit; padding: 0; }
 .rate { display: flex; gap: 6px; } .rate button { flex: 1; padding: 6px; }
 .row.end { justify-content: flex-end; }
 #panel { position: relative; }
+
+.live-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(70px, 1fr)); gap: 6px; margin: 6px 0; }
+.live-stats div { background: var(--card); border-radius: 6px; padding: 4px 6px; display: flex; flex-direction: column; align-items: center; }
+.live-stats b { font-size: 15px; font-variant-numeric: tabular-nums; } .live-stats span { font-size: 10px; color: var(--muted); }
+#live-lines div { margin: 2px 0; }
+.sum-high { margin: 6px 0; padding-left: 18px; font-size: 12px; } .sum-high:empty { display: none; }

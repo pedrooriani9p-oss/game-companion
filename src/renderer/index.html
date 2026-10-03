@@ -44,6 +44,13 @@
           <span>Reconhecido automaticamente. Para dicas e um guia deste jogo, toque em 🤖.</span>
           <button id="btn-not-game" class="link" title="Este programa não será mais reconhecido como jogo">Não é um jogo</button>
         </div>
+        <div id="live-card" class="card cs2" hidden>
+          <div class="cs2-head"><b id="live-title"></b><span id="live-sub" class="muted"></span></div>
+          <div id="live-stats" class="live-stats"></div>
+          <div id="live-lines" class="small"></div>
+          <p id="live-tip" class="cs2-tip"></p>
+          <div id="live-msg" class="muted small"></div>
+        </div>
         <div id="cs2-card" class="card cs2" hidden>
           <div class="cs2-head"><b id="cs2-map">CS2 ao vivo</b><span id="cs2-round" class="muted"></span></div>
           <div id="cs2-live" hidden>
@@ -123,6 +130,7 @@
           <div><b id="sum-low">–</b><span>FPS mais baixo</span></div>
         </div>
         <div id="sum-compare" class="muted small"></div>
+        <ul id="sum-high" class="sum-high"></ul>
         <div class="muted small">Como foi a sessão?</div>
         <div class="rate"><button data-rate="good">👍 Boa</button><button data-rate="ok">😐 Ok</button><button data-rate="bad">👎 Ruim</button></div>
         <input id="sum-note" placeholder="Comentário (opcional): o que travou, o que deu certo">

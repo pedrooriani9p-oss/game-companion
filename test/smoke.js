@@ -130,4 +130,99 @@ assert.deepStrictEqual([dmEnd.res, dmEnd.k, dmEnd.note.split(' (')[0]], ['', 30,
 const cfg = gsiConfig(3971, 'abc');
 assert(cfg.includes('"uri" "http://127.0.0.1:3971/cs2"') && cfg.includes('"token" "abc"') && cfg.includes('"player_match_stats" "1"'));
 
+// Valorant (cliente da Riot no PC)
+const val = require('../src/live/valorant');
+assert.deepStrictEqual(val.parseLockfile('Riot Client:1234:51234:s3nh4:https'), { name: 'Riot Client', pid: 1234, port: 51234, password: 's3nh4', protocol: 'https' });
+assert.strictEqual(val.parseLockfile(''), null);
+assert.strictEqual(val.mapName('/Game/Maps/Triad/Triad'), 'Haven');
+assert.strictEqual(val.mapName('/Game/Maps/Ascent/Ascent', { '/Game/Maps/Ascent/Ascent': 'Ascent' }), 'Ascent');
+const b64 = (o) => Buffer.from(JSON.stringify(o)).toString('base64');
+// Formato antigo (tudo num nível) e novo (aninhado) da presença.
+const flatP = val.decodePresence(b64({ sessionLoopState: 'INGAME', matchMap: '/Game/Maps/Bonsai/Bonsai', queueId: 'competitive', partyOwnerMatchScoreAllyTeam: 7, partyOwnerMatchScoreEnemyTeam: 4 }));
+const nestedP = val.decodePresence(b64({ isValid: true, matchPresenceData: { sessionLoopState: 'INGAME', matchMap: '/Game/Maps/Bonsai/Bonsai', queueId: 'competitive' }, partyPresenceData: { partyOwnerMatchScoreAllyTeam: 7, partyOwnerMatchScoreEnemyTeam: 4 } }));
+for (const pr of [flatP, nestedP]) {
+  const st = val.liveFromPresence(pr);
+  assert.deepStrictEqual([st.loop, st.map, st.queueLabel, st.ally, st.enemy, st.tips.length > 0], ['INGAME', 'Split', 'Competitivo', 7, 4, true]);
+}
+assert.strictEqual(val.decodePresence('%%%'), null);
+const vlive = new val.ValorantLive();
+assert.strictEqual(vlive.update(flatP).ended, null);
+const endedV = vlive.update(val.decodePresence(b64({ sessionLoopState: 'MENUS', queueId: 'competitive' }))).ended;
+assert.strictEqual(endedV.map, 'Split', 'fim da partida percebido');
+assert.deepStrictEqual(val.parseShooterLog('x https://glz-br-1.na.a.pvp.net/session y\nLogShooter: Display: CI server version: release-11.06-shipping-7-3592541\n'),
+  { region: 'br', shard: 'na', version: 'release-11.06-shipping-7-3592541' });
+const PUUID = 'aaaa-bbbb';
+const details = {
+  matchInfo: { matchId: 'm1', mapId: '/Game/Maps/Bonsai/Bonsai', queueID: 'competitive', gameStartMillis: 1000, gameLengthMillis: 2000 },
+  players: [{ subject: PUUID, teamId: 'Blue', characterId: 'ABC', stats: { score: 4800, roundsPlayed: 20, kills: 19, deaths: 12, assists: 6 } }, { subject: 'other', teamId: 'Red', characterId: 'X', stats: {} }],
+  teams: [{ teamId: 'Blue', won: true, roundsWon: 13 }, { teamId: 'Red', won: false, roundsWon: 7 }],
+  roundResults: [{ playerStats: [{ subject: PUUID, damage: [{ headshots: 3, bodyshots: 6, legshots: 1 }] }] }],
+};
+const vm = val.summarizeMatch(details, PUUID, { agents: { abc: 'Jett' } });
+assert.deepStrictEqual([vm.res, vm.k, vm.d, vm.a, vm.at], ['V', 19, 12, 6, 3000]);
+assert.strictEqual(vm.note, 'Split · Competitivo, placar 13-7, agente Jett, 240 ACS, 30% na cabeça (registrado pelo app do PC)');
+assert.strictEqual(val.summarizeMatch(details, 'ninguém'), null);
+const pm = val.matchFromPresence(val.liveFromPresence(flatP), 5);
+assert.deepStrictEqual([pm.res, pm.k, pm.note], ['V', null, 'Split · Competitivo, placar 7-4 (registrado pelo app do PC, sem K/D)']);
+
+// Minecraft e Cobblemon (logs/latest.log)
+const { MinecraftLog, gameDirFromCmdline } = require('../src/live/minecraft');
+const mc = new MinecraftLog();
+mc.line('[18:00:01] [main/INFO]: Setting user: PedroMC', { replay: true });
+mc.line('[18:00:09] [Server thread/INFO]: Preparing level "Mundo do Pedro"', { replay: true });
+assert.deepStrictEqual([mc.player, mc.world], ['PedroMC', 'Mundo do Pedro']);
+let ev = mc.line('[18:05:00] [Server thread/INFO]: PedroMC was slain by Zombie', { now: 1000 });
+assert.deepStrictEqual([ev.type, ev.cause, ev.count], ['death', 'was slain by Zombie', 1]);
+assert.strictEqual(mc.line('[18:05:00] [Render thread/INFO]: [System] [CHAT] PedroMC was slain by Zombie', { now: 1200 }), null, 'mesma morte no chat conta uma vez');
+assert.strictEqual(mc.line('[18:06:00] [Render thread/INFO]: [System] [CHAT] <PedroMC> morreu de rir kkk', { now: 9000 }), null, 'conversa não é morte');
+assert.strictEqual(mc.line('[18:06:30] [Render thread/INFO]: [System] [CHAT] PedroMC caiu de um lugar alto', { now: 20000 }).type, 'death', 'mensagem em português');
+assert.strictEqual(mc.line('[18:07:00] [Render thread/INFO]: [System] [CHAT] PedroMC has made the advancement [Diamonds!]', { now: 30000 }).name, 'Diamonds!');
+assert.strictEqual(mc.line('[18:08:00] [Render thread/INFO]: [System] [CHAT] You caught a Pikachu!', { now: 40000 }).name, 'Pikachu');
+assert.strictEqual(mc.line('[18:09:00] [Render thread/INFO]: [System] [CHAT] OutraPessoa was slain by Zombie', { now: 50000 }), null, 'morte de outro jogador');
+assert.deepStrictEqual(mc.highlights(), ['2 mortes', 'conquistas: Diamonds!', '1 capturas (Pikachu)']);
+assert.strictEqual(gameDirFromCmdline('javaw -Xmx4G --username Pedro --gameDir "C:\\Users\\p\\curseforge\\minecraft\\Instances\\Cobblemon" --assetsDir x'), 'C:\\Users\\p\\curseforge\\minecraft\\Instances\\Cobblemon');
+assert.strictEqual(gameDirFromCmdline('javaw --gameDir C:\\mc\\inst --x'), 'C:\\mc\\inst');
+
+// TF2 (console com -condebug)
+const { Tf2Console, personaFromLoginUsers } = require('../src/live/tf2');
+assert.strictEqual(personaFromLoginUsers('"users"\n{\n\t"76561198000000001"\n\t{\n\t\t"AccountName"\t\t"a"\n\t\t"PersonaName"\t\t"Velho"\n\t\t"MostRecent"\t\t"0"\n\t}\n\t"76561198000000002"\n\t{\n\t\t"PersonaName"\t\t"p H n"\n\t\t"MostRecent"\t\t"1"\n\t}\n}'), 'p H n');
+const tf = new Tf2Console('p H n');
+assert.deepStrictEqual(tf.line('Map: ctf_2fort'), { type: 'map', map: 'ctf_2fort', previous: null });
+assert.strictEqual(tf.line('p H n killed Bob with scattergun.').streak, 1);
+assert.strictEqual(tf.line('p H n killed Ana with tf_projectile_rocket. (crit)').weapon, 'Lança-foguetes');
+assert.strictEqual(tf.line('p H n killed Leo with scattergun.').streak, 3);
+assert.strictEqual(tf.line('Bob killed p H n with sniperrifle.').by, 'Bob');
+tf.line('Bob killed p H n with sniperrifle. (crit)');
+assert.strictEqual(tf.line('Ana killed Leo with minigun.'), null, 'abate entre outros');
+tf.line('p H n suicided.');
+assert.deepStrictEqual([tf.kills, tf.deaths, tf.best, tf.streak, tf.crits], [3, 3, 3, 0, 1]);
+const tfMap = tf.line('Map: pl_badwater');
+assert.deepStrictEqual([tfMap.previous.k, tfMap.previous.d, tfMap.previous.res], [3, 3, '']);
+assert.strictEqual(tfMap.previous.note, 'ctf_2fort, melhor sequência 3, mais abates com Espingarda, quem mais te matou: Bob (2) (registrado pelo app do PC)');
+assert.strictEqual(tf.summary(), null, 'mapa novo sem nada ainda');
+
+// Stardew (SaveGameInfo)
+const sd = require('../src/live/stardew');
+const save = (money, day, farming) => `<?xml version="1.0"?><Farmer><items><Item><name>Parsnip</name></Item></items><name>Pedro</name><farmName>Vale Feliz</farmName><money>${money}</money><totalMoneyEarned>9000</totalMoneyEarned><farmingLevel>${farming}</farmingLevel><miningLevel>1</miningLevel><foragingLevel>2</foragingLevel><fishingLevel>0</fishingLevel><combatLevel>1</combatLevel><dayOfMonthForSaveGame>${day}</dayOfMonthForSaveGame><seasonForSaveGame>1</seasonForSaveGame><yearForSaveGame>2</yearForSaveGame></Farmer>`;
+const d5 = sd.parseSaveInfo(save(1500, 5, 2)), d6 = sd.parseSaveInfo(save(2750, 6, 3));
+assert.deepStrictEqual([d5.farm, d5.money, d5.day, d5.season, d5.year, d5.levels.farmingLevel], ['Vale Feliz', 1500, 5, 1, 2, 2]);
+assert.strictEqual(sd.dateLabel(d6), 'Verão 6, ano 2');
+assert.deepStrictEqual(sd.diffSaves(d5, d6), { money: 1250, ups: ['Cultivo 3'], newDay: true });
+assert.strictEqual(sd.diffSaves(d6, d6).newDay, false);
+assert.strictEqual(sd.parseSaveInfo('lixo'), null);
+
+// Arquivo que cresce (Tail)
+const { Tail } = require('../src/tail');
+const tfile = path.join(path.dirname(file), 'log.txt');
+fs.writeFileSync(tfile, 'antiga\n');
+const got = [];
+const tl = new Tail(tfile, (ls) => got.push(...ls));
+fs.appendFileSync(tfile, 'nova 1\nnova');
+tl.read();
+fs.appendFileSync(tfile, ' 2\n');
+tl.read();
+fs.writeFileSync(tfile, 'recomeçou\n');
+tl.read();
+assert.deepStrictEqual(got, ['nova 1', 'nova 2', 'recomeçou']);
+
 console.log('OK: todos os testes passaram');

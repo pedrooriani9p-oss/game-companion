@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('api', {
   ignoreGame: () => ipcRenderer.invoke('ignore-game'),
   quit: () => ipcRenderer.invoke('quit'),
   onCs2: (cb) => ipcRenderer.on('cs2', (_e, s) => cb(s)),
+  onLive: (cb) => ipcRenderer.on('live', (_e, c) => cb(c)),
   onCs2Status: (cb) => ipcRenderer.on('cs2-status', (_e, s) => cb(s)),
   onCs2Match: (cb) => ipcRenderer.on('cs2-match', (_e, m) => cb(m)),
   onSessionSummary: (cb) => ipcRenderer.on('session-summary', (_e, s) => cb(s)),

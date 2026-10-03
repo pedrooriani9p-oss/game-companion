@@ -7,6 +7,12 @@ const { FpsMeter } = require('./fps');
 const { checkLatest } = require('./updater');
 const { identifyForeground, buildLibrary, slug } = require('./detect');
 const { Cs2Live, gsiConfig } = require('./cs2');
+const https = require('https');
+const { Tail } = require('./tail');
+const valorant = require('./live/valorant');
+const { MinecraftLog, gameDirFromCmdline } = require('./live/minecraft');
+const { Tf2Console, personaFromLoginUsers } = require('./live/tf2');
+const stardew = require('./live/stardew');
 const path = require('path');
 const si = require('systeminformation');
 const fs = require('fs');
@@ -208,7 +214,7 @@ async function pollGame() {
     if (found) { store.startSession(found.id); store.state.names[found.id] = found.name; }
     currentGame = found;
     send('game-changed', currentGame);
-    syncFps();
+    syncFps(); syncLive();
   }
   store.save();
 }
@@ -361,6 +367,11 @@ function sampleFps() {
 function finishSession({ quiet = false } = {}) {
   const extra = sessionFps.length ? { fpsAvg: Math.round(sessionFps.reduce((a, b) => a + b, 0) / sessionFps.length), fpsLow: sessionLow } : {};
   sessionFps = []; sessionLow = null;
+  // O modo ao vivo do jogo fecha a sessão: destaques no resumo e, nos jogos de progresso, uma anotação no Diário.
+  const last = store.state.sessions[store.state.sessions.length - 1];
+  const fin = liveMod && liveMod.finish ? liveMod.finish(last && last.end === null ? Date.now() - last.start : 0) : null;
+  if (fin && fin.highlights && fin.highlights.length) extra.highlights = fin.highlights;
+  if (fin && fin.diary && currentGame) registerMatch(currentGame.id, { at: Date.now(), prog: true, note: fin.diary }, { toast: false });
   const s = store.endSession(Date.now(), extra);
   if (!quiet && s && s.end - s.start >= 120000) {
     const name = store.state.names[s.gameId] || (games.find((g) => g.id === s.gameId) || {}).name || s.gameId;
@@ -416,16 +427,23 @@ function startCs2Server() {
 const RES = { V: 'Vitória', D: 'Derrota', E: 'Empate' };
 function onCs2Match(m) {
   store.state.cs2Matches = [...(store.state.cs2Matches || []), m].slice(-100);
-  store.state.pendingMatches = [...(store.state.pendingMatches || []), { game: 'cs2', ...m }];
-  store.save();
   send('cs2-match', m);
-  send('toast', `🏁 Partida registrada: ${RES[m.res] || 'sem resultado'}${m.k != null ? `, ${m.k}/${m.a}/${m.d}` : ''}. ${m.note.split(' (')[0]}`);
+  registerMatch('cs2', m);
+}
+// Guarda uma partida (ou anotação do Diário, com prog) para mandar à página do Claude.
+function registerMatch(game, m, { toast = true } = {}) {
+  store.state.pendingMatches = [...(store.state.pendingMatches || []), { game, ...m }];
+  store.save();
+  const nums = m.k == null ? '' : m.a == null ? `, ${m.k} abates e ${m.d} mortes` : `, ${m.k}/${m.a}/${m.d}`;
+  if (toast) send('toast', `🏁 Partida registrada: ${RES[m.res] || 'sem resultado'}${nums}. ${m.note.split(' (')[0]}`);
   deliverPending();
 }
 // Manda as partidas guardadas para a página do Claude (onde ficam o histórico e as análises).
 let delivering = false;
+let quitting = false;
+app.on('before-quit', () => { quitting = true; });
 async function deliverPending() {
-  if (delivering || !(store.state.pendingMatches || []).length) return;
+  if (quitting || delivering || !(store.state.pendingMatches || []).length) return;
   delivering = true;
   try {
     const w = openClaude({ show: false });
@@ -438,6 +456,320 @@ async function deliverPending() {
       store.save();
     }
   } finally { delivering = false; }
+}
+
+
+// ---------- Modo ao vivo de outros jogos (Valorant, Minecraft, TF2, Stardew) ----------
+const appData = () => process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
+const localAppData = () => process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+const readText = (f) => { try { return fs.readFileSync(f, 'utf8'); } catch { return ''; } };
+const subdirs = (base) => { try { return fs.readdirSync(base, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => path.join(base, d.name)); } catch { return []; } };
+const mtime = (f) => { try { return fs.statSync(f).mtimeMs; } catch { return 0; } };
+const newest = (files) => files.map((f) => [f, mtime(f)]).filter((x) => x[1]).sort((a, b) => b[1] - a[1]).map((x) => x[0])[0] || null;
+const money = (n) => Number(n || 0).toLocaleString('pt-BR');
+const minutes = (ms) => fmtMinutes(ms / 1000);
+// Anotação do Diário: frase terminada com pontuação e a marca de que veio do app.
+const diaryNote = (text) => `${text}${/[.!?]$/.test(text) ? '' : '.'} (registrado pelo app do PC)`;
+function fmtMinutes(sec) { return sec >= 3600 ? `${Math.floor(sec / 3600)} h ${Math.floor((sec % 3600) / 60)} min` : `${Math.max(1, Math.floor(sec / 60))} min`; }
+// Últimos (ou primeiros) bytes de um arquivo, sem ler tudo: registros de jogos com mods ficam enormes.
+function readTail(f, bytes = 65536, fromStart = false) {
+  try { const st = fs.statSync(f), len = Math.min(st.size, bytes), b = Buffer.alloc(len), fd = fs.openSync(f, 'r'); fs.readSync(fd, b, 0, len, fromStart ? 0 : st.size - len); fs.closeSync(fd); return b.toString('utf8'); } catch { return ''; }
+}
+
+function getJson(url, { headers = {}, insecure = false, timeout = 8000 } = {}) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, { headers, rejectUnauthorized: !insecure, timeout }, (res) => {
+      let body = ''; res.setEncoding('utf8');
+      res.on('data', (c) => { body += c; });
+      res.on('end', () => {
+        if (res.statusCode >= 400) return reject(new Error(`HTTP ${res.statusCode}`));
+        try { resolve(JSON.parse(body)); } catch (e) { reject(e); }
+      });
+    });
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+    req.on('error', reject);
+  });
+}
+
+let liveMod = null;   // { id, stop(), card(), finish(ms) }
+let liveCard = null;
+function sendLive() { liveCard = liveMod ? liveMod.card() : null; send('live', liveCard); }
+function syncLive() {
+  const id = currentGame && currentGame.id;
+  if (liveMod && liveMod.id === id) return;
+  if (liveMod) { liveMod.stop(); liveMod = null; }
+  const make = { valorant: valorantLive, minecraft: minecraftLive, cobblemon: minecraftLive, tf2: tf2Live, stardew: stardewLive }[id];
+  if (make) { try { liveMod = make(id); } catch { liveMod = null; } }
+  sendLive();
+}
+
+// --- Valorant: presença do próprio jogador no Riot Client e, no fim, os detalhes da partida ---
+const VAL_PLATFORM = Buffer.from(JSON.stringify({ platformType: 'PC', platformOS: 'Windows', platformOSVersion: '10.0.19042.1.256.64bit', platformChipset: 'Unknown' })).toString('base64');
+let valNamesCache = null;
+async function valNames() {
+  if (valNamesCache && (valNamesCache.ok || Date.now() - valNamesCache.at < 10 * 60000)) return valNamesCache;
+  const out = { maps: {}, agents: {}, ok: false, at: Date.now() };
+  try {
+    const [maps, agents] = await Promise.all([getJson('https://valorant-api.com/v1/maps'), getJson('https://valorant-api.com/v1/agents?isPlayableCharacter=true')]);
+    for (const m of maps.data || []) if (m.mapUrl) out.maps[m.mapUrl] = m.displayName;
+    for (const a of agents.data || []) out.agents[String(a.uuid).toLowerCase()] = a.displayName;
+    out.ok = true;
+  } catch {}
+  valNamesCache = out;
+  return out;
+}
+function valorantLive(id) {
+  const vl = new valorant.ValorantLive();
+  const lockPath = path.join(localAppData(), 'Riot Games', 'Riot Client', 'Config', 'lockfile');
+  const sess = { matches: 0, wins: 0, k: 0, d: 0, withKd: 0 };
+  const reported = new Set(store.state.valReported || []);
+  let lock = null, puuid = null, state = null, agent = null, agentFor = null, agentTry = 0, msg = 'Procurando o cliente da Riot...', tip = 0, stopped = false, remote = null;
+  const local = (p) => getJson(`https://127.0.0.1:${lock.port}${p}`, { insecure: true, headers: { Authorization: 'Basic ' + Buffer.from(`riot:${lock.password}`).toString('base64') } });
+  async function auth() {
+    const ent = await local('/entitlements/v1/token');
+    if (!remote) {
+      remote = valorant.parseShooterLog(readText(path.join(localAppData(), 'VALORANT', 'Saved', 'Logs', 'ShooterGame.log')));
+      if (!remote.version) { try { remote.version = (await getJson('https://valorant-api.com/v1/version')).data.riotClientVersion; } catch {} }
+    }
+    if (!remote.region) throw new Error('sem região');
+    return { headers: { Authorization: `Bearer ${ent.accessToken}`, 'X-Riot-Entitlements-JWT': ent.token, 'X-Riot-ClientPlatform': VAL_PLATFORM, 'X-Riot-ClientVersion': remote.version || '' }, puuid: ent.subject };
+  }
+  // Só o agente do próprio Pedro (nada dos outros jogadores).
+  async function fetchAgent() {
+    try {
+      const a = await auth(), glz = `https://glz-${remote.region}-1.${remote.shard}.a.pvp.net`;
+      const cur = await getJson(`${glz}/core-game/v1/players/${a.puuid}`, { headers: a.headers });
+      if (agentFor === cur.MatchID) return;
+      const match = await getJson(`${glz}/core-game/v1/matches/${cur.MatchID}`, { headers: a.headers });
+      const me = (match.Players || []).find((x) => x.Subject === a.puuid);
+      const names = await valNames();
+      agent = me ? names.agents[String(me.CharacterID).toLowerCase()] || null : null; agentFor = cur.MatchID;
+      sendLive();
+    } catch {}
+  }
+  async function fetchMatch(ended, endedAt, tries = 0) {
+    try {
+      const a = await auth(), pd = `https://pd.${remote.shard}.a.pvp.net`;
+      const hist = await getJson(`${pd}/match-history/v1/history/${a.puuid}?startIndex=0&endIndex=3`, { headers: a.headers });
+      const names = await valNames();
+      for (const h of hist.History || []) {
+        if (reported.has(h.MatchID) || h.GameStartTime < endedAt - 2 * 3600000) continue;
+        const d = await getJson(`${pd}/match-details/v1/matches/${h.MatchID}`, { headers: a.headers });
+        if (d.matchInfo && ended.mapUrl && d.matchInfo.mapId !== ended.mapUrl) continue;
+        const m = valorant.summarizeMatch(d, a.puuid, names);
+        if (!m) continue;
+        reported.add(h.MatchID); store.state.valReported = [...reported].slice(-50);
+        return done(m);
+      }
+      throw new Error('ainda não apareceu');
+    } catch {
+      if (tries < 3) setTimeout(() => fetchMatch(ended, endedAt, tries + 1), 20000);
+      else done(valorant.matchFromPresence(ended, endedAt));
+    }
+  }
+  function done(m) {
+    sess.matches++; if (m.res === 'V') sess.wins++;
+    if (m.k != null) { sess.withKd++; sess.k += m.k; sess.d += m.d || 0; }
+    registerMatch('valorant', m);
+    if (!stopped) sendLive();
+  }
+  async function tick() {
+    const l = valorant.parseLockfile(readText(lockPath));
+    if (!l) { lock = null; state = null; msg = 'Abra o Valorant pelo Riot Client para ligar o modo ao vivo.'; return sendLive(); }
+    lock = l;
+    try {
+      if (!puuid) puuid = (await local('/chat/v1/session')).puuid;
+      const pres = ((await local('/chat/v4/presences')).presences || []).find((p) => p.puuid === puuid && p.product === 'valorant');
+      const names = await valNames();
+      const { state: s, ended } = vl.update(pres ? valorant.decodePresence(pres.private) : null, names.maps);
+      if (s && state && s.map !== state.map) tip = 0;
+      state = s; msg = s ? '' : 'Entre no Valorant para ver o mapa e o placar aqui.';
+      if (s && s.loop === 'INGAME' && !agent && Date.now() - agentTry > 60000) { agentTry = Date.now(); fetchAgent(); }
+      if (s && s.loop !== 'INGAME') { agent = null; agentFor = null; agentTry = 0; }
+      if (ended) { const at = Date.now(); setTimeout(() => fetchMatch(ended, at), 15000); }
+    } catch { state = null; msg = 'Não consegui falar com o cliente da Riot. Ele está aberto?'; }
+    sendLive();
+  }
+  tick();
+  const timer = setInterval(tick, 4000);
+  const tipTimer = setInterval(() => { tip++; }, 90000);
+  return {
+    id,
+    stop() { stopped = true; clearInterval(timer); clearInterval(tipTimer); },
+    card() {
+      const s = state, ingame = s && s.loop === 'INGAME';
+      const stats = [];
+      if (ingame) stats.push(['Placar', `${s.ally} x ${s.enemy}`], ['Agente', agent || '–']);
+      stats.push(['Partidas na sessão', String(sess.matches)]);
+      if (sess.matches) stats.push(['Vitórias', String(sess.wins)]);
+      if (sess.withKd) stats.push(['K/D', `${sess.k}/${sess.d}`]);
+      return {
+        game: id, title: 'Valorant ao vivo', sub: s ? [s.stateLabel, s.map, s.loop !== 'MENUS' ? s.queueLabel : ''].filter(Boolean).join(' · ') : '',
+        stats, tip: s && s.tips.length ? s.tips[tip % s.tips.length] : '', msg,
+        compact: ingame ? `${s.map} ${s.ally}-${s.enemy}${agent ? ` · ${agent}` : ''}` : '',
+      };
+    },
+    finish() {
+      // Fechou o jogo direto da tela final: busca a partida mesmo assim.
+      if (vl.lastIngame) { const e = vl.lastIngame; vl.lastIngame = null; fetchMatch(e, Date.now(), 1); }
+      const h = sess.matches ? [`${sess.matches} ${sess.matches === 1 ? 'partida' : 'partidas'}, ${sess.wins} ${sess.wins === 1 ? 'vitória' : 'vitórias'}`] : [];
+      if (sess.withKd) h.push(`K/D ${sess.k}/${sess.d}`);
+      return { highlights: h };
+    },
+  };
+}
+
+// --- Minecraft e Cobblemon: registro do jogo (logs/latest.log) ---
+function minecraftLogCandidates() {
+  const ad = appData(), home = process.env.USERPROFILE || os.homedir();
+  const out = [path.join(ad, '.minecraft', 'logs', 'latest.log')];
+  for (const base of [path.join(home, 'curseforge', 'minecraft', 'Instances'), path.join(ad, 'ModrinthApp', 'profiles'), path.join(ad, 'com.modrinth.theseus', 'profiles'), path.join(ad, 'ATLauncher', 'instances'), path.join(ad, '.technic', 'modpacks')]) {
+    for (const d of subdirs(base)) out.push(path.join(d, 'logs', 'latest.log'));
+  }
+  for (const d of subdirs(path.join(ad, 'PrismLauncher', 'instances'))) out.push(path.join(d, '.minecraft', 'logs', 'latest.log'), path.join(d, 'minecraft', 'logs', 'latest.log'));
+  return out;
+}
+function minecraftLive(id) {
+  const log = new MinecraftLog();
+  let tail = null, file = null, msg = 'Procurando o registro do Minecraft...';
+  function onLines(lines) {
+    for (const l of lines) {
+      const e = log.line(l);
+      if (!e) continue;
+      if (e.type === 'death') send('toast', `💀 Você morreu: ${e.cause} (${e.count}ª morte da sessão)`);
+      if (e.type === 'advancement') send('toast', `🏆 Conquista: ${e.name}`);
+      if (e.type === 'catch') send('toast', `🎉 Capturou ${e.name}! (${e.count} na sessão)`);
+    }
+    sendLive();
+  }
+  async function pick() {
+    const dirs = (await javaCmdlines(await listProcesses())).map(gameDirFromCmdline).filter(Boolean);
+    const fromCmd = dirs.map((d) => path.join(d, 'logs', 'latest.log')).find((f) => mtime(f));
+    const f = fromCmd || newest(minecraftLogCandidates());
+    if (!f) { msg = 'Não achei o registro do Minecraft (pasta logs). O modo ao vivo liga quando o jogo criar o arquivo.'; return sendLive(); }
+    if (f === file) return;
+    if (tail) tail.stop();
+    file = f; msg = '';
+    for (const l of `${readTail(f, 1 << 20, true)}\n${readTail(f, 1 << 20)}`.split('\n')) log.line(l, { replay: true });
+    tail = new Tail(f, onLines).start();
+    sendLive();
+  }
+  pick();
+  const timer = setInterval(pick, 30000);
+  return {
+    id,
+    stop() { clearInterval(timer); if (tail) tail.stop(); },
+    card() {
+      const lastDeath = log.deaths[log.deaths.length - 1], lastAdv = log.advancements[log.advancements.length - 1];
+      const stats = [['Mortes', String(log.deaths.length)], ['Conquistas', String(log.advancements.length)]];
+      if (id === 'cobblemon' || log.catches.length) stats.push(['Capturas', String(log.catches.length)]);
+      const lines = [];
+      if (lastDeath) lines.push(`Última morte (${new Date(lastDeath.at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}): ${lastDeath.cause}`);
+      if (lastAdv) lines.push(`Última conquista: ${lastAdv.name}`);
+      if (log.catches.length) lines.push(`Capturados: ${log.catches.slice(-5).map((x) => x.name).join(', ')}`);
+      return { game: id, title: `${id === 'cobblemon' ? 'Cobblemon' : 'Minecraft'} ao vivo`, sub: log.world ? `mundo ${log.world}` : '', stats, lines, msg,
+        compact: `💀 ${log.deaths.length}${log.catches.length ? ` · 🎉 ${log.catches.length}` : ''}` };
+    },
+    finish(ms) {
+      const h = log.highlights();
+      return { highlights: h, diary: h.length ? diaryNote(`Sessão de ${minutes(ms)}${log.world ? ` no mundo ${log.world}` : ''}: ${h.join('; ')}`) : null };
+    },
+  };
+}
+
+// --- TF2: console salvo com -condebug ---
+function tf2Live(id) {
+  let con = null, tail = null, msg = 'Procurando o console do TF2...', seen = false;
+  const sess = { k: 0, d: 0, best: 0 };
+  const help = 'Para ligar: na Steam, clique com o botão direito no TF2, Propriedades, Opções de inicialização, escreva -condebug e abra o TF2 de novo.';
+  (async () => {
+    const libs = await steamLibraries();
+    const me = personaFromLoginUsers(readText(path.join(libs[0] || '', 'config', 'loginusers.vdf')));
+    con = new Tf2Console(me);
+    const file = libs.map((l) => path.join(l, 'steamapps', 'common', 'Team Fortress 2', 'tf', 'console.log')).find((f) => mtime(f));
+    if (!file) { msg = help; return sendLive(); }
+    const maps = [...readTail(file).matchAll(/^Map: (\S+)\r?$/gm)];
+    if (maps.length) con.reset(maps[maps.length - 1][1]);
+    msg = me ? `Esperando o console do TF2. Se nada mudar durante a partida, falta o -condebug. ${help}` : 'Não achei seu nome da Steam para contar os abates.';
+    tail = new Tail(file, (lines) => {
+      for (const l of lines) {
+        const e = con.line(l);
+        if (!seen) { seen = true; msg = ''; }
+        if (!e) continue;
+        if (e.type === 'kill') { sess.k++; sess.best = Math.max(sess.best, e.streak); if (e.streak % 5 === 0) send('toast', `🔥 Sequência de ${e.streak} abates!`); }
+        if (e.type === 'death') sess.d++;
+        if (e.type === 'map' && e.previous) registerMatch('tf2', e.previous);
+      }
+      sendLive();
+    }).start();
+    sendLive();
+  })();
+  return {
+    id,
+    stop() { if (tail) tail.stop(); },
+    card() {
+      const c = con || {};
+      const stats = con ? [['Abates', String(c.kills)], ['Mortes', String(c.deaths)], ['K/D', (c.kills / Math.max(1, c.deaths)).toFixed(2).replace('.', ',')], ['Sequência', `${c.streak} (melhor ${c.best})`]] : [];
+      const lines = [];
+      const w = con && con.top(con.weapons), nem = con && con.top(con.killers);
+      if (w) lines.push(`Mais abates com: ${w.name} (${w.n})`);
+      if (nem && nem.n >= 2) lines.push(`Quem mais te matou: ${nem.name} (${nem.n})`);
+      return { game: id, title: 'TF2 ao vivo', sub: c.map || '', stats, lines, msg, compact: con && c.map ? `${c.map} · ${c.kills}/${c.deaths}` : '' };
+    },
+    finish() {
+      const s = con && con.summary();
+      if (s) registerMatch('tf2', s);
+      return { highlights: sess.k + sess.d ? [`${sess.k} abates, ${sess.d} mortes`, `melhor sequência ${sess.best}`] : [] };
+    },
+  };
+}
+
+// --- Stardew: o save do dia (SaveGameInfo) ---
+function stardewLive(id) {
+  const savesDir = path.join(appData(), 'StardewValley', 'Saves');
+  let file = null, seenAt = 0, first = null, cur = null, days = 0, ups = [], msg = '';
+  function check() {
+    const f = newest(subdirs(savesDir).map((d) => path.join(d, 'SaveGameInfo')));
+    if (!f) { msg = 'Não achei os saves do Stardew. Eles aparecem depois do primeiro dia dormido.'; return sendLive(); }
+    const m = mtime(f);
+    if (f === file && m === seenAt) return;
+    const info = stardew.parseSaveInfo(readText(f));
+    if (!info) return;
+    const changed = f === file;
+    file = f; seenAt = m; msg = '';
+    if (!first || !changed) { first = info; cur = info; return sendLive(); }
+    const diff = stardew.diffSaves(cur, info);
+    cur = info;
+    if (diff && diff.newDay) {
+      days++; ups.push(...diff.ups);
+      send('toast', `🌙 Dia salvo: ${diff.money >= 0 ? '+' : ''}${money(diff.money)} g.${diff.ups.length ? ` Subiu: ${diff.ups.join(', ')}.` : ''} Agora: ${stardew.dateLabel(info)}.`);
+    }
+    sendLive();
+  }
+  check();
+  const timer = setInterval(check, 5000);
+  return {
+    id,
+    stop() { clearInterval(timer); },
+    card() {
+      if (!cur) return { game: id, title: 'Stardew ao vivo', sub: '', stats: [], msg };
+      const gained = (cur.money ?? 0) - (first.money ?? 0);
+      return {
+        game: id, title: 'Stardew ao vivo', sub: [cur.farm && `Fazenda ${cur.farm}`, stardew.dateLabel(cur)].filter(Boolean).join(' · '),
+        stats: [['Dinheiro', `${money(cur.money)} g`], ['Na sessão', `${gained >= 0 ? '+' : ''}${money(gained)} g`], ['Dias', String(days)]],
+        lines: [stardew.SKILLS.map(([k, label]) => `${label} ${cur.levels[k]}`).join(' · ')],
+        tip: cur.season != null ? stardew.SEASON_TIPS[cur.season][days % 2] : '', msg,
+        compact: `${money(cur.money)} g`,
+      };
+    },
+    finish(ms) {
+      if (!days || !cur) return { highlights: [] };
+      const gained = (cur.money ?? 0) - (first.money ?? 0);
+      const h = [`${days} ${days === 1 ? 'dia' : 'dias'} (${stardew.dateLabel(first)} até ${stardew.dateLabel(cur)})`, `${gained >= 0 ? '+' : ''}${money(gained)} g`];
+      if (ups.length) h.push(`subiu ${ups.join(', ')}`);
+      return { highlights: h, diary: diaryNote(`Sessão de ${minutes(ms)}: ${h.join('; ')}`) };
+    },
+  };
 }
 
 // ---------- Ícone perto do relógio ----------
@@ -476,7 +808,7 @@ function registerShortcuts() {
 }
 
 function registerIpc() {
-  ipcMain.handle('get-state', () => ({ games, currentGame, state: store.state, mode: { clickThrough, compact }, cs2: cs2.state, cs2Status }));
+  ipcMain.handle('get-state', () => ({ games, currentGame, state: store.state, mode: { clickThrough, compact }, cs2: cs2.state, cs2Status, live: liveCard }));
   ipcMain.handle('rate-session', (_e, start, rating, note) => { store.rateSession(start, rating, note); store.save(); });
   ipcMain.handle('quit', () => app.quit());
   // "Não é um jogo": esse programa não é mais reconhecido sozinho.
@@ -484,7 +816,7 @@ function registerIpc() {
     if (!currentGame || !currentGame.auto || !currentGame.exe[0]) return;
     store.state.ignoredExe = [...new Set([...(store.state.ignoredExe || []), currentGame.exe[0].toLowerCase()])];
     finishSession({ quiet: true });
-    currentGame = null; send('game-changed', null); syncFps(); store.save();
+    currentGame = null; send('game-changed', null); syncFps(); syncLive(); store.save();
   });
   ipcMain.handle('save-note', (_e, gameId, text) => { store.state.notes[gameId] = text; store.save(); });
   ipcMain.handle('save-reminders', (_e, reminders) => { store.state.reminders = reminders; store.save(); });
@@ -495,7 +827,7 @@ function registerIpc() {
     currentGame = games.find((g) => g.id === gameId) || null;
     if (currentGame) store.startSession(currentGame.id);
     send('game-changed', currentGame);
-    syncFps();
+    syncFps(); syncLive();
   });
   ipcMain.handle('open-url', (_e, url) => {
     if (/^https:\/\//.test(url)) shell.openExternal(url);
@@ -559,4 +891,5 @@ app.on('will-quit', () => {
   stopFps();
   if (fgProc) { try { fgProc.kill(); } catch {} }
   if (store) { finishSession({ quiet: true }); store.save(); }
+  if (liveMod) liveMod.stop();
 });
