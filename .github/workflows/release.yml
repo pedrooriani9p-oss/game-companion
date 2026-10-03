@@ -1,0 +1,28 @@
+# Gera o .exe no Windows e publica uma versão no GitHub quando uma tag vX.Y.Z é enviada.
+name: Publicar versão
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npx electron-builder --win portable --x64 --publish never
+      - name: Publicar a versão com o .exe
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.exe
+          body: |
+            Baixe o .exe abaixo e abra com dois cliques. Na primeira vez, o Windows pode mostrar um aviso: clique em "Mais informações" e depois em "Executar assim mesmo".
