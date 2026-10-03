@@ -9,15 +9,20 @@ Um painel que fica por cima do jogo (overlay) no PC. No topo aparece a capa do j
   - **Minecraft e Cobblemon**: lê o `logs/latest.log` (Minecraft normal, CurseForge, Modrinth, Prism, ATLauncher, Technic). Conta mortes, conquistas e capturas da sessão e avisa na hora. No fim, escreve um resumo no Diário.
   - **TF2**: precisa da opção de inicialização `-condebug` na Steam. Mostra abates, mortes, K/D, sequência, arma com mais abates e quem mais te matou. Cada mapa vira uma partida.
   - **Stardew**: lê o save do dia (`SaveGameInfo`): fazenda, data, dinheiro, habilidades e dicas da estação. Avisa quanto ganhou ao dormir e escreve o resumo no Diário.
-- **Desempenho**: FPS do jogo (com o PresentMon da Intel, que já vem junto; na primeira vez pode pedir permissão de administrador), uso de CPU, GPU, RAM e VRAM, temperaturas, gráfico dos últimos 2 minutos, **FPS médio de cada sessão** por jogo, sessões recentes e total de horas jogadas por jogo.
+- **Evolução**: histórico de todas as partidas (as do modo ao vivo e as anotadas na janela do Claude, à mão ou pelo print do placar), por jogo e por período (7 dias, 30 dias ou tudo). Mostra partidas, % de vitórias, K/D e tempo com a comparação com o período anterior, um gráfico de K/D por partida com a média das últimas 5, tempo de jogo por dia, mapas com o seu melhor e o seu pior, recordes (mais abates, melhor K/D, vitórias seguidas, sessão mais longa), **metas** (K/D, % de vitórias, abates por partida, partidas na semana, limite de horas na semana) com aviso quando bate, e a semana atual contra a passada. O botão "Pedir dicas ao Claude" manda esse resumo para a pergunta do Claude. Toda segunda-feira aparece um aviso com o resumo da semana que passou.
+- **Turbo**: FPS do jogo (com o PresentMon da Intel, que já vem junto; na primeira vez pode pedir permissão de administrador), uso de CPU, GPU, RAM e VRAM, temperaturas e gráfico dos últimos 2 minutos. **O que está pesando**: os programas que mais usam o PC agora, com um botão para fechar (Windows, drivers, antivírus, Steam e anti-cheats ficam de fora). **Quedas de FPS**: quando o FPS cai, o app anota a hora e o motivo provável (programa pesado, placa de vídeo ou processador no limite, memória cheia, PC quente) e avisa. Também avisa quando o PC esquenta, liga o plano **Alto desempenho** do Windows enquanto joga (e volta ao normal depois) e mostra o FPS médio de cada sessão.
+- **HUD no jogo**: um mini painel por cima do jogo que deixa os cliques passarem, com FPS, CPU e GPU, tempo de sessão, relógio, o próximo timer e, no CS2, placar, dinheiro e uma **dica de compra** no começo da rodada (compra completa, eco ou force, pela sua economia). Escolha o canto e o que aparece em Ajustes. Ctrl+Shift+H mostra ou esconde.
+- **Clipes**: com os clipes ligados em Ajustes, o app grava a tela enquanto você joga e guarda só os últimos 15, 30 ou 60 segundos. Ctrl+Shift+C (ou o botão na aba Jogo) salva o clipe em Vídeos, pasta Game Companion. Pode salvar sozinho em jogadas boas (3 ou mais abates numa rodada do CS2, sequência de 5 no TF2). Gravar usa um pouco do PC: se o FPS cair, use 720p.
 - **Resumo da sessão**: ao fechar um jogo (depois de 2 minutos ou mais), o painel mostra tempo, FPS médio, FPS mais baixo e a comparação com a sua média. Dá para avaliar a sessão (👍 😐 👎) e deixar um comentário.
-- **Timers**: cronômetros rápidos (1, 3, 5, 10 min ou com nome), cronômetro normal e lembretes recorrentes (ex.: beber água a cada 30 min). Quando um timer acaba, o painel aparece, toca um bipe e mostra um aviso.
+- **Timers**: cronômetros rápidos (1, 3, 5, 10 min ou com nome), cronômetro normal, lembretes recorrentes (ex.: beber água a cada 30 min) e um limite de horas de jogo por dia. Quando um timer acaba, o painel aparece, toca um bipe e mostra um aviso.
 
-- **Ajustes**: transparência do painel, tamanho (Normal ou Grande), posição em qualquer canto da tela, avisos no canto da tela, som dos timers, iniciar com o Windows, atalhos e procurar atualização.
+- **Ajustes**: transparência do painel, tamanho (Normal ou Grande), posição em qualquer canto da tela, avisos no canto da tela, som dos timers, iniciar com o Windows, HUD no jogo, clipes, atalhos e procurar atualização.
 
 Os avisos (partida registrada, morte no Minecraft, dia salvo no Stardew, print do placar) aparecem no canto da tela mesmo com o painel escondido.
 
-![Jogo](screenshots/jogo.png) ![Desempenho](screenshots/desempenho.png) ![Timers](screenshots/timers.png) ![Ajustes](screenshots/ajustes.png)
+![Evolução](screenshots/evolucao.png) ![Metas e semana](screenshots/semana.png) ![Turbo](screenshots/turbo.png) ![Jogo](screenshots/jogo.png)
+
+![HUD no jogo](screenshots/hud.png)
 
 ## Atalhos
 
@@ -28,6 +33,8 @@ Os avisos (partida registrada, morte no Minecraft, dia salvo no Stardew, print d
 | Ctrl+Shift+M | Modo compacto (uma linha com jogo, tempo, CPU/GPU e próximo timer) |
 | Ctrl+Shift+W | Abrir a janela do Claude dentro do app (perguntas, partidas, imagens com dicas) já no jogo detectado |
 | Ctrl+Shift+P | Tirar print da tela e mandar para a leitura do placar na janela do Claude |
+| Ctrl+Shift+H | Mostrar ou esconder o HUD no jogo |
+| Ctrl+Shift+C | Salvar um clipe com os últimos segundos (com os clipes ligados) |
 
 Arraste o painel pelo título para mudar de lugar.
 
@@ -47,7 +54,7 @@ Na primeira vez que abrir a janela do Claude (Ctrl+Shift+W ou 🤖), entre na su
 
 Aviso de atualização: o app confere as versões publicadas em https://github.com/pedrooriani9p-oss/game-companion/releases e avisa no painel quando sai uma nova.
 
-**Importante:** o painel só aparece por cima de jogos em **tela cheia sem bordas** (borderless / "janela sem bordas"). Em tela cheia exclusiva o Windows não deixa nenhum overlay aparecer.
+**Importante:** o painel e o HUD só aparecem por cima de jogos em **tela cheia sem bordas** (borderless / "janela sem bordas"). Em tela cheia exclusiva o Windows não deixa nenhum overlay aparecer.
 
 ## Adicionar jogos e dicas
 
@@ -57,7 +64,7 @@ Os dados (anotações, horas, lembretes) ficam em `%APPDATA%\game-companion\data
 
 ## Testes
 
-`npm test` roda os testes da lógica (detecção de jogo, Steam, Epic, GOG, janela em primeiro plano, CS2 ao vivo, FPS, armazenamento).
+`npm test` roda os testes da lógica (detecção de jogo, Steam, Epic, GOG, janela em primeiro plano, CS2 ao vivo e dica de compra, modos ao vivo, Evolução e metas, Turbo, duração dos clipes, armazenamento).
 
 ## Próximos passos possíveis
 

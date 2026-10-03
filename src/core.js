@@ -75,7 +75,15 @@ const DEFAULT_STATE = {
   cs2Matches: [],   // partidas do CS2 registradas pelo modo ao vivo
   ignoredExe: [],   // programas marcados como "não é um jogo"
   pendingMatches: [], // partidas ainda não enviadas para a janela do Claude
-  settings: { opacity: 90, size: 'normal', cornerToasts: true, sound: true },
+  history: [],      // todas as partidas, para a aba Evolução: [{ game, at, res, k, a, d, map, ... }]
+  goals: [],        // metas: [{ id, game, type, target, doneAt?, warnedWeek? }]
+  lastWeekly: 0,    // segunda-feira do último aviso de resumo da semana
+  settings: {
+    opacity: 90, size: 'normal', cornerToasts: true, sound: true,
+    hud: false, hudCorner: 'tl', hudItems: { fps: true, perf: true, session: true, clock: false, timer: true, cs2: true, live: true },
+    turboPower: false, turboAlerts: true, dailyLimitMin: 0,
+    clips: false, clipSeconds: 30, clipAuto: true, clipQuality: '720',
+  },
   reminders: [
     { id: 'agua', label: 'Beber água', everyMin: 30, enabled: true },
     { id: 'postura', label: 'Pausa e alongar', everyMin: 60, enabled: true }
@@ -86,7 +94,11 @@ class Store {
   constructor(file) {
     this.file = file;
     try {
-      this.state = { ...structuredClone(DEFAULT_STATE), ...JSON.parse(fs.readFileSync(file, 'utf8')) };
+      const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
+      this.state = { ...structuredClone(DEFAULT_STATE), ...saved };
+      // Ajustes novos ganham o valor padrão sem perder os que o Pedro já mudou.
+      this.state.settings = { ...DEFAULT_STATE.settings, ...(saved.settings || {}) };
+      this.state.settings.hudItems = { ...DEFAULT_STATE.settings.hudItems, ...((saved.settings || {}).hudItems || {}) };
     } catch {
       this.state = structuredClone(DEFAULT_STATE);
     }
@@ -106,8 +118,22 @@ class Store {
     const s = this.state.sessions[this.state.sessions.length - 1];
     let ended = null;
     if (s && s.end === null) { s.end = now; Object.assign(s, extra); ended = s; }
-    this.state.sessions = this.state.sessions.slice(-200);
+    this.state.sessions = this.state.sessions.slice(-1000);
     return ended;
+  }
+  // Guarda uma partida no histórico da Evolução. Retorna false quando ela já estava lá (mesmo jogo e horário).
+  addMatch(game, m) {
+    if (!game || !m || !m.at || m.prog) return false;
+    const list = this.state.history || (this.state.history = []);
+    if (list.some((x) => x.game === game && Math.abs(x.at - m.at) < 1000)) return false;
+    const keep = {};
+    for (const k of ['at', 'res', 'k', 'a', 'd', 'map', 'mapLabel', 'mode', 'score', 'mvps', 'agent', 'acs', 'hs', 'best', 'src']) if (m[k] != null && m[k] !== '') keep[k] = m[k];
+    if (keep.res == null) keep.res = '';
+    if (m.note && !keep.map && !keep.mapLabel) keep.note = String(m.note).slice(0, 200);
+    list.push({ game, ...keep });
+    list.sort((a, b) => a.at - b.at);
+    if (list.length > 3000) list.splice(0, list.length - 3000);
+    return true;
   }
   // Nota que o Pedro dá para a sessão no resumo (bom, ok, ruim) e um comentário opcional.
   rateSession(start, rating, note = '') {

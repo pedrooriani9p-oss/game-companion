@@ -1,6 +1,6 @@
 {
   "name": "game-companion",
-  "version": "0.5.1",
+  "version": "1.0.0",
   "description": "Overlay para ajudar durante jogos no PC: dicas, desempenho e timers.",
   "main": "src/main.js",
   "scripts": {

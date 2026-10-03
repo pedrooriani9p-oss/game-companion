@@ -23,10 +23,13 @@ const reminderNext = {};    // { reminderId: timestamp }
 const stopwatch = { running: false, start: 0, acc: 0 };
 
 // ---------- Abas ----------
+let activeTab = 'jogo';
 $$('.tabs button').forEach((b) => b.addEventListener('click', () => {
+  activeTab = b.dataset.tab;
   $$('.tabs button').forEach((x) => x.classList.toggle('active', x === b));
   $$('.tab').forEach((t) => t.classList.toggle('active', t.id === `tab-${b.dataset.tab}`));
-  if (b.dataset.tab === 'desempenho') refreshState();
+  if (activeTab === 'turbo') { refreshState(); refreshProcs(); }
+  if (activeTab === 'evolucao') { refreshState(); renderEvolution(); window.api.evoSync().then((ok) => { if (ok) renderEvolution(); }).catch(() => {}); }
 }));
 
 $('#btn-hide').onclick = () => window.api.hide();
@@ -359,8 +362,10 @@ function beep() {
 
 function addTimer(label, minutes) {
   timers.push({ id: Date.now() + Math.random(), label: label || `${minutes} min`, end: Date.now() + minutes * 60000 });
-  renderTimers();
+  renderTimers(); syncTimers();
 }
+// O HUD por cima do jogo mostra o próximo timer.
+function syncTimers() { window.api.setTimers(timers.map(({ label, end }) => ({ label, end }))); }
 $$('[data-min]').forEach((b) => b.onclick = () => addTimer('', Number(b.dataset.min)));
 $('#timer-form').onsubmit = (e) => {
   e.preventDefault();
@@ -376,7 +381,7 @@ function renderTimers() {
     const li = document.createElement('li');
     li.innerHTML = `<span class="grow"></span><b>${fmt((t.end - now) / 1000)}</b><button>✕</button>`;
     li.querySelector('.grow').textContent = t.label;
-    li.querySelector('button').onclick = () => { timers.splice(timers.indexOf(t), 1); renderTimers(); };
+    li.querySelector('button').onclick = () => { timers.splice(timers.indexOf(t), 1); renderTimers(); syncTimers(); };
     $('#timers').appendChild(li);
   });
 }
@@ -419,7 +424,7 @@ function tick() {
   $('#t-session').textContent = session || '–';
 
   for (const t of [...timers]) {
-    if (now >= t.end) { timers.splice(timers.indexOf(t), 1); alertUser(`${t.label}: tempo esgotado!`); }
+    if (now >= t.end) { timers.splice(timers.indexOf(t), 1); syncTimers(); alertUser(`${t.label}: tempo esgotado!`); }
   }
   renderTimers();
 
@@ -459,6 +464,17 @@ function applySettings() {
   $$('#set-size button').forEach((b) => b.classList.toggle('on', b.dataset.size === (settings.size || 'normal')));
   $('#set-corner-toasts').checked = settings.cornerToasts !== false;
   $('#set-sound').checked = settings.sound !== false;
+  $('#set-hud').checked = Boolean(settings.hud);
+  $$('#set-hud-corner button').forEach((b) => b.classList.toggle('on', b.dataset.corner === (settings.hudCorner || 'tl')));
+  $$('#set-hud-items button').forEach((b) => b.classList.toggle('on', Boolean((settings.hudItems || {})[b.dataset.item])));
+  $('#set-turbo-power').checked = Boolean(settings.turboPower);
+  $('#set-turbo-alerts').checked = settings.turboAlerts !== false;
+  if (document.activeElement !== $('#set-daily-limit')) $('#set-daily-limit').value = settings.dailyLimitMin ? String(Math.round((settings.dailyLimitMin / 60) * 10) / 10) : '';
+  $('#set-clips').checked = Boolean(settings.clips);
+  $$('#set-clip-seconds button').forEach((b) => b.classList.toggle('on', Number(b.dataset.sec) === Number(settings.clipSeconds || 30)));
+  $$('#set-clip-quality button').forEach((b) => b.classList.toggle('on', b.dataset.q === (settings.clipQuality || '720')));
+  $('#set-clip-auto').checked = settings.clipAuto !== false;
+  renderClips();
 }
 function setSetting(key, value) { settings[key] = value; applySettings(); window.api.setSetting(key, value); }
 $('#set-opacity').oninput = (e) => setSetting('opacity', Number(e.target.value));
@@ -466,6 +482,18 @@ $$('#set-size button').forEach((b) => b.onclick = () => setSetting('size', b.dat
 $$('#set-corner button').forEach((b) => b.onclick = () => window.api.snap(b.dataset.corner));
 $('#set-corner-toasts').onchange = (e) => setSetting('cornerToasts', e.target.checked);
 $('#set-sound').onchange = (e) => setSetting('sound', e.target.checked);
+$('#set-hud').onchange = (e) => setSetting('hud', e.target.checked);
+$$('#set-hud-corner button').forEach((b) => b.onclick = () => setSetting('hudCorner', b.dataset.corner));
+$$('#set-hud-items button').forEach((b) => b.onclick = () => setSetting('hudItems', { ...(settings.hudItems || {}), [b.dataset.item]: !(settings.hudItems || {})[b.dataset.item] }));
+$('#set-turbo-power').onchange = (e) => setSetting('turboPower', e.target.checked);
+$('#set-turbo-alerts').onchange = (e) => setSetting('turboAlerts', e.target.checked);
+$('#set-daily-limit').onchange = (e) => setSetting('dailyLimitMin', Math.round((Number(String(e.target.value).replace(',', '.')) || 0) * 60));
+$('#set-clips').onchange = (e) => setSetting('clips', e.target.checked);
+$$('#set-clip-seconds button').forEach((b) => b.onclick = () => setSetting('clipSeconds', Number(b.dataset.sec)));
+$$('#set-clip-quality button').forEach((b) => b.onclick = () => setSetting('clipQuality', b.dataset.q));
+$('#set-clip-auto').onchange = (e) => setSetting('clipAuto', e.target.checked);
+$('#btn-clips-folder').onclick = () => window.api.openClipsFolder();
+window.api.onSettings((s) => { settings = { ...s }; applySettings(); });
 $('#set-autostart').onchange = async (e) => { $('#set-autostart').checked = await window.api.setAutostart(e.target.checked); };
 $('#btn-check-update').onclick = async () => {
   $('#update-status').textContent = 'Procurando...';
@@ -480,7 +508,9 @@ $('#btn-check-update').onclick = async () => {
   games = init.games; state = init.state; cs2State = init.cs2; cs2Status = init.cs2Status; liveCard = init.live;
   games.forEach((g) => $('#game-select').add(new Option(g.name, g.id)));
   settings = init.settings || {};
+  clipsInfo = init.clips || null;
   applySettings();
+  renderDrops(init.drops || []); renderPower(init.power);
   $('#app-version').textContent = init.version ? `versão ${init.version}` : '';
   window.api.getAutostart().then((on) => { $('#set-autostart').checked = on; }).catch(() => {});
   applyMode(init.mode);
@@ -492,4 +522,228 @@ $('#btn-check-update').onclick = async () => {
   setInterval(refreshStats, 2000);
   setInterval(refreshFps, 1000);
   setInterval(refreshState, 30000);
+  setInterval(() => { if (activeTab === 'turbo' && !document.hidden) refreshProcs(); }, 5000);
+  window.api.onHistory(() => { if (activeTab === 'evolucao') renderEvolution(); refreshState(); });
 })();
+
+// ---------- Evolução ----------
+let evoGame = null, evoDays = 30, evo = null;
+const fmtNum = (v, d = 2) => (v == null ? '–' : v.toFixed(d).replace('.', ','));
+const fmtPct = (r) => (r == null ? '–' : `${Math.round(r * 100)}%`);
+function fmtH(sec) {
+  const s = Math.max(0, Math.round(sec || 0));
+  if (s < 3600) return `${Math.max(s ? 1 : 0, Math.round(s / 60))} min`;
+  return `${Math.floor(s / 3600)}h ${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}m`;
+}
+const dateShort = (t) => new Date(t).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+const RES_COLOR = { V: '#5ad1a0', D: '#ff6b6b' };
+
+// Seta comparando com o período anterior de mesmo tamanho.
+function delta(el, cur, prev, kind) {
+  el.className = ''; el.textContent = '';
+  if (!evo || !evo.prev || cur == null || prev == null || (kind === 'n' && !cur && !prev)) return;
+  const d = cur - prev, tiny = { n: 0.5, pct: 0.005, kd: 0.005, time: 30 }[kind];
+  if (Math.abs(d) < tiny) { el.textContent = '= anterior'; return; }
+  const txt = kind === 'pct' ? `${Math.round(Math.abs(d) * 100)} pts` : kind === 'kd' ? fmtNum(Math.abs(d)) : kind === 'time' ? fmtH(Math.abs(d)) : String(Math.abs(d));
+  el.textContent = `${d > 0 ? '▲' : '▼'} ${txt}`;
+  if (kind === 'pct' || kind === 'kd') el.className = d > 0 ? 'up' : 'down';
+}
+
+async function renderEvolution() {
+  try { evo = await window.api.evolution(evoGame, evoDays); } catch { return; }
+  evoGame = evo.game;
+  const sel = $('#evo-game');
+  sel.innerHTML = '';
+  if (!evo.games.length) sel.add(new Option('Nenhum jogo ainda', ''));
+  evo.games.forEach((g) => sel.add(new Option(`${g.name}${g.matches ? ` · ${g.matches} ${g.matches === 1 ? 'partida' : 'partidas'}` : ''}`, g.id)));
+  sel.value = evo.game || '';
+  $$('#evo-days button').forEach((b) => b.classList.toggle('on', Number(b.dataset.days) === evoDays));
+  const s = evo.summary, p = evo.prev || {};
+  const period = evoDays ? `comparado com os ${evoDays} dias anteriores` : '';
+  $$('#tab-evolucao .tiles .tile').forEach((t) => { t.title = period; });
+  $('#e-n').textContent = evo.game ? String(s.n) : '–';
+  $('#e-win').textContent = fmtPct(s.winRate);
+  $('#e-kd').textContent = fmtNum(s.kd);
+  // No quadrinho, a partir de 10 horas mostra só as horas para caber.
+  $('#e-time').textContent = !evo.game ? '–' : s.sec >= 36000 ? `${Math.floor(s.sec / 3600)}h` : fmtH(s.sec);
+  delta($('#e-n-d'), s.n, p.n, 'n'); delta($('#e-win-d'), s.winRate, p.winRate, 'pct');
+  delta($('#e-kd-d'), s.kd, p.kd, 'kd'); delta($('#e-time-d'), s.sec, p.sec, 'time');
+  const empty = !evo.games.length
+    ? 'Jogue com o app aberto e tudo aparece aqui. No CS2, Valorant e TF2 as partidas entram sozinhas; nos outros jogos, contam o tempo e as sessões.'
+    : !evo.hasKd && !evo.hasResults ? `No ${evo.name} não há partidas registradas, só o tempo de jogo. As partidas entram sozinhas no CS2, Valorant e TF2, ou pela página do Claude.` : '';
+  $('#evo-empty').hidden = !empty; $('#evo-empty').textContent = empty;
+  $('#evo-chart-card').hidden = !evo.hasKd;
+  $('#evo-maps-card').hidden = !evo.maps.length;
+  drawKd(); drawPlay(); renderMaps(); renderRecords(); renderGoals(); renderWeek();
+  $('#evo-src').textContent = evo.games.length ? 'Partidas do modo ao vivo e as anotadas na página do Claude.' : '';
+}
+$('#evo-game').onchange = (e) => { evoGame = e.target.value || null; renderEvolution(); };
+$$('#evo-days button').forEach((b) => b.onclick = () => { evoDays = Number(b.dataset.days); renderEvolution(); });
+
+function drawKd() {
+  const svg = $('#evo-chart'), pts = evo.series;
+  const t = evo.trend;
+  $('#evo-trend').innerHTML = t ? `K/D das últimas ${t.n}: <b>${fmtNum(t.recent)}</b> <span class="${t.diff >= 0 ? 'up' : 'down'}">${t.diff >= 0 ? '▲' : '▼'} ${fmtNum(Math.abs(t.diff))}</span> contra as ${t.n} anteriores` : '';
+  if (!pts.length) { svg.innerHTML = '<text x="170" y="62" text-anchor="middle">Sem partidas com abates neste período.</text>'; return; }
+  const W = 340, H = 120, L = 26, R = 8, T = 8, B = 8;
+  const max = Math.min(6, Math.max(2, ...pts.map((x) => x.kd)) * 1.1);
+  const x = (i) => (pts.length === 1 ? (L + W - R) / 2 : L + (i / (pts.length - 1)) * (W - L - R));
+  const y = (v) => T + (1 - Math.min(v, max) / max) * (H - T - B);
+  let out = `<line x1="${L}" x2="${W - R}" y1="${y(1)}" y2="${y(1)}" stroke="rgba(255,255,255,0.28)" stroke-dasharray="3 3"/>`;
+  out += `<text x="4" y="${y(1) + 3}">1,0</text><text x="4" y="${y(max) + 8}">${fmtNum(max, 1)}</text><text x="4" y="${H - B}">0</text>`;
+  if (pts.length > 1) out += `<polyline fill="none" stroke="#ffd27a" stroke-width="1.8" stroke-linejoin="round" points="${pts.map((q, i) => `${x(i).toFixed(1)},${y(q.avg).toFixed(1)}`).join(' ')}"/>`;
+  pts.forEach((q, i) => {
+    out += `<circle cx="${x(i).toFixed(1)}" cy="${y(q.kd).toFixed(1)}" r="3.4" fill="${RES_COLOR[q.res] || '#7d8496'}"><title>${dateShort(q.at)}: ${q.k} abates, ${q.d} mortes (K/D ${fmtNum(q.kd)})</title></circle>`;
+  });
+  svg.innerHTML = out;
+}
+
+function drawPlay() {
+  const svg = $('#evo-play'), days = evo.playtime || [];
+  const W = 340, H = 90, T = 16, B = 14, gap = days.length > 10 ? 2 : 6;
+  const max = Math.max(1800, ...days.map((d) => d.sec));
+  const bw = (W - gap * (days.length - 1)) / Math.max(1, days.length);
+  const week = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+  let out = '';
+  days.forEach((d, i) => {
+    const h = d.sec ? Math.max(2, (d.sec / max) * (H - T - B)) : 0, x0 = i * (bw + gap), y0 = H - B - h;
+    out += `<rect x="${x0.toFixed(1)}" y="${y0.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${i === days.length - 1 ? '#6aa8ff' : '#5ad1a0'}" opacity="${d.sec ? 0.9 : 0}"><title>${dateShort(d.day)}: ${fmtH(d.sec)}</title></rect>`;
+    if (days.length <= 10) {
+      out += `<text x="${(x0 + bw / 2).toFixed(1)}" y="${H - 3}" text-anchor="middle">${week[new Date(d.day).getDay()]}</text>`;
+      if (d.sec >= 60) out += `<text x="${(x0 + bw / 2).toFixed(1)}" y="${(y0 - 3).toFixed(1)}" text-anchor="middle">${fmtH(d.sec).replace(' ', '')}</text>`;
+    } else if (i % 5 === (days.length - 1) % 5) out += `<text x="${(x0 + bw / 2).toFixed(1)}" y="${H - 3}" text-anchor="middle">${dateShort(d.day)}</text>`;
+  });
+  svg.innerHTML = out;
+  const total = days.reduce((a, d) => a + d.sec, 0), played = days.filter((d) => d.sec >= 60).length;
+  $('#evo-play-info').textContent = total ? `Total ${fmtH(total)} em ${days.length} dias · jogou em ${played} ${played === 1 ? 'dia' : 'dias'} · média de ${fmtH(total / Math.max(1, played))} nesses dias.` : 'Sem tempo de jogo neste período.';
+}
+
+function renderMaps() {
+  const rows = evo.maps.slice(0, 8), pick = evo.mapPick || {};
+  $('#evo-maps').innerHTML = rows.length ? '<tr><th>Mapa</th><th>Partidas</th><th>Vitórias</th><th>K/D</th></tr>' + rows.map((r) =>
+    `<tr class="${r.map === pick.best ? 'best' : r.map === pick.worst ? 'worst' : ''}"><td>${escapeHtml(r.map)}</td><td>${r.n}</td><td>${r.decided ? fmtPct(r.winRate) : '–'}</td><td>${fmtNum(r.kd)}</td></tr>`).join('') : '';
+  $('#evo-maps-note').textContent = pick.best ? `Melhor e pior pelo ${pick.metric === 'win' ? '% de vitórias' : 'K/D'}, contando mapas com 3 partidas ou mais.` : rows.length ? 'Com 3 partidas ou mais em dois mapas, aparece aqui o seu melhor e o seu pior.' : '';
+}
+
+function renderRecords() {
+  const r = evo.records || {}, box = (label, value, sub) => `<div><span>${label}</span><b>${value}</b><small>${escapeHtml(sub || '')}</small></div>`;
+  const where = (m) => [dateShort(m.at), m.mapLabel || m.map].filter(Boolean).join(' · ');
+  $('#evo-records').innerHTML = [
+    box('Mais abates', r.mostKills ? r.mostKills.k : '–', r.mostKills ? where(r.mostKills) : 'numa partida'),
+    box('Melhor K/D', r.bestKd ? fmtNum(r.bestKd.k / Math.max(1, r.bestKd.d)) : '–', r.bestKd ? `${r.bestKd.k}/${r.bestKd.d} · ${where(r.bestKd)}` : 'com 10+ abates e mortes'),
+    box('Vitórias seguidas', r.winStreak ? r.winStreak.n : '–', r.winStreak ? `até ${dateShort(r.winStreak.at)}` : 'a maior sequência'),
+    box('Sessão mais longa', r.longestSession ? fmtH((r.longestSession.end - r.longestSession.start) / 1000) : '–', r.longestSession ? dateShort(r.longestSession.start) : ''),
+  ].join('');
+}
+
+const GOAL_DEFAULT = { kd: 1.2, win: 55, kills: 18, matches: 10, hours: 15 };
+function renderGoals() {
+  const list = evo.goals || [];
+  $('#evo-goals').innerHTML = list.length ? '' : '<div class="empty-line">Crie uma meta para acompanhar aqui, por exemplo K/D de 1,2 no CS2.</div>';
+  list.forEach((g) => {
+    const p = g.progress || {};
+    const el = document.createElement('div');
+    el.className = `goal${p.done ? ' done' : ''}${p.over ? ' over' : ''}`;
+    const sign = g.type === 'hours' ? '≤' : '≥';
+    const sub = p.done ? '🎉 Meta batida!' : p.over ? 'Passou do limite desta semana.' : !p.enough ? 'Precisa de pelo menos 5 partidas para contar.' : g.type === 'hours' ? `Faltam ${fmtNum(Math.max(0, p.target - (p.value || 0)), 1)} h até o limite.` : '';
+    el.innerHTML = `<div class="top"><span></span><b>${escapeHtml(p.valueText || '–')} / ${sign} ${escapeHtml(p.targetText || '')}</b><button title="Apagar meta">✕</button></div><div class="bar"><i style="width:${Math.round((p.pct || 0) * 100)}%"></i></div><div class="sub"></div>`;
+    el.querySelector('.top span').textContent = `${p.label || ''} · ${g.gameName}`;
+    el.querySelector('.sub').textContent = sub;
+    el.querySelector('button').onclick = async () => { await window.api.setGoals((evo.goals || []).filter((x) => x.id !== g.id)); renderEvolution(); };
+    $('#evo-goals').appendChild(el);
+  });
+}
+$('#goal-type').onchange = (e) => { $('#goal-target').value = GOAL_DEFAULT[e.target.value]; };
+$('#goal-form').onsubmit = async (e) => {
+  e.preventDefault();
+  const type = $('#goal-type').value, target = Number(String($('#goal-target').value).replace(',', '.'));
+  if (!(target > 0)) return;
+  const goals = (evo && evo.goals ? evo.goals : []).map(({ id, game, type: t, target: v }) => ({ id, game, type: t, target: v }));
+  goals.push({ id: String(Date.now()), game: type === 'hours' ? null : evoGame, type, target });
+  await window.api.setGoals(goals);
+  renderEvolution();
+};
+
+function renderWeek() {
+  const rows = evo.week || [];
+  const arrow = (cur, prev) => (cur == null || prev == null || Math.abs(cur - prev) < 1e-9 ? '' : ` <span class="${cur > prev ? 'up' : 'down'}">${cur > prev ? '▲' : '▼'}</span>`);
+  const cell = (label, value, before) => `<div><label>${label}</label><b>${value}</b><small>antes ${before}</small></div>`;
+  const hm = (sec) => (sec < 3600 ? fmtH(sec).replace(' ', '') : `${Math.floor(sec / 3600)}h${String(Math.floor((sec % 3600) / 60)).padStart(2, '0')}`);
+  $('#evo-week').innerHTML = rows.length ? rows.slice(0, 6).map((r) => `<div class="wk"><div class="wk-name">${escapeHtml(r.name)}</div><div class="wk-cells">`
+    + cell('Tempo', hm(r.cur.sec), hm(r.prev.sec))
+    + cell('Partidas', `${r.cur.n}${arrow(r.cur.n, r.prev.n)}`, r.prev.n)
+    + cell('Vitórias', `${fmtPct(r.cur.winRate)}${arrow(r.cur.winRate, r.prev.winRate)}`, fmtPct(r.prev.winRate))
+    + cell('K/D', `${fmtNum(r.cur.kd)}${arrow(r.cur.kd, r.prev.kd)}`, fmtNum(r.prev.kd))
+    + '</div></div>').join('') : '<div class="empty-line">Sem jogo nesta semana nem na passada.</div>';
+  $('#btn-evo-ask').disabled = !evo.game;
+}
+$('#btn-evo-ask').onclick = async () => {
+  if (!evo || !evo.game) return;
+  $('#evo-ask-msg').textContent = 'Abrindo o Claude com o resumo da sua evolução...';
+  let ok = false; try { ok = await window.api.askClaude(evo.game, evoDays); } catch {}
+  $('#evo-ask-msg').textContent = ok ? 'Pergunta enviada na janela do Claude.' : 'Copiei o relatório: cole na pergunta da janela do Claude (Ctrl+V).';
+};
+
+// ---------- Turbo ----------
+const fmtMb = (mb) => (mb >= 1024 ? `${(mb / 1024).toFixed(1).replace('.', ',')} GB` : `${mb} MB`);
+async function refreshProcs() {
+  let list = [];
+  try { list = await window.api.turboProcs(); } catch {}
+  const ul = $('#procs');
+  ul.innerHTML = list.length ? '' : '<li class="empty-line">Nada pesando agora.</li>';
+  list.forEach((p) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<span class="grow"></span><span class="nums">${fmtNum(p.cpu, p.cpu >= 10 ? 0 : 1)}% CPU · ${fmtMb(p.ramMb)}</span><button class="kill">Fechar</button>`;
+    li.querySelector('.grow').textContent = `${p.label}${p.count > 1 ? ` (${p.count})` : ''}`;
+    li.querySelector('.grow').title = p.name;
+    const btn = li.querySelector('button');
+    let step = 0, force = false;
+    btn.onclick = async () => {
+      if (step === 0) { step = 1; btn.textContent = force ? 'Forçar?' : 'Fechar?'; btn.classList.add('confirm'); setTimeout(() => { if (step === 1) { step = 0; btn.textContent = force ? 'Forçar' : 'Fechar'; btn.classList.remove('confirm'); } }, 3000); return; }
+      step = 2; btn.textContent = '...';
+      let r = { closed: false, msg: '' };
+      try { r = await window.api.turboClose(p.name, force); } catch {}
+      $('#procs-msg').textContent = r.closed ? `${p.label} foi fechado.` : r.msg;
+      if (r.closed) return refreshProcs();
+      force = true; step = 0; btn.textContent = 'Forçar'; btn.classList.remove('confirm');
+    };
+    ul.appendChild(li);
+  });
+}
+let drops = [];
+function renderDrops(list) {
+  drops = list || [];
+  $('#drops').innerHTML = drops.length ? [...drops].reverse().map((d) => `<li><span class="when">${new Date(d.at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span><span class="fall">${d.from} → ${d.to} FPS</span><span class="why">${escapeHtml(d.text)}</span></li>`).join('')
+    : `<li class="empty-line">${game ? 'Nenhuma queda até agora.' : 'As quedas de FPS aparecem aqui enquanto você joga, com o motivo provável.'}</li>`;
+}
+window.api.onTurboDrop((d) => renderDrops(d ? [...drops, d] : []));
+function renderPower(st) {
+  $('#power-msg').textContent = st === 'on' ? 'Ligado: o Windows está no modo Alto desempenho até o jogo fechar.'
+    : st === 'unavailable' ? 'Este PC não tem o plano Alto desempenho do Windows.'
+      : settings.turboPower ? 'Liga sozinho quando um jogo abrir e volta ao normal quando ele fechar.' : '';
+}
+window.api.onTurboPower(renderPower);
+
+// ---------- Clipes ----------
+let clipsInfo = null;
+function renderClips() {
+  const c = clipsInfo;
+  $('#clips-card').hidden = !settings.clips;
+  if (!settings.clips || !c) return;
+  const on = c.status === 'on';
+  $('#clips-pill').classList.toggle('on', on);
+  $('#clips-pill').lastChild.textContent = on ? 'Gravando' : 'Clipes';
+  $('#clips-title').textContent = on ? `Ctrl+Shift+C salva os últimos ${c.seconds} s` : c.status === 'starting' ? 'Começando a gravar...' : c.status === 'error' ? 'Gravação parada' : 'Começa quando um jogo abrir';
+  $('#btn-save-clip').disabled = !on;
+  $('#clips-msg').textContent = c.msg || '';
+  $('#clips-list').innerHTML = '';
+  c.list.forEach((x) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<span class="grow"></span><span class="muted">${Math.round(x.ms / 1000)} s</span><button>Abrir</button>`;
+    li.querySelector('.grow').textContent = `${new Date(x.at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · ${nameOf(x.game || '') || 'Clipe'}${x.reason ? ` ${x.reason}` : ''}`;
+    li.querySelector('button').onclick = () => window.api.openClip(x.file);
+    $('#clips-list').appendChild(li);
+  });
+}
+$('#btn-save-clip').onclick = () => window.api.saveClip();
+window.api.onClips((c) => { clipsInfo = c; renderClips(); });

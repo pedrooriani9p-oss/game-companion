@@ -119,13 +119,15 @@ function summarizeMatch(d, puuid, { agents = {}, maps = {} } = {}) {
     at: info.gameStartMillis ? info.gameStartMillis + (info.gameLengthMillis || 0) : Date.now(),
     res, k: st.kills ?? null, a: st.assists ?? null, d: st.deaths ?? null,
     note: `${parts.join(', ')} (registrado pelo app do PC)`, map, matchId: info.matchId,
+    mode: QUEUES[queue] ?? queue, agent: agent || null, acs, hs: shots ? Math.round((hs / shots) * 100) : null,
+    score: queue !== 'deathmatch' && pts(mine) != null && pts(other) != null ? [pts(mine), pts(other)] : null,
   };
 }
 
 // Quando não deu para buscar os detalhes: usa o placar da presença.
 function matchFromPresence(s, at = Date.now()) {
   const res = s.queue === 'deathmatch' ? '' : s.ally > s.enemy ? 'V' : s.ally < s.enemy ? 'D' : 'E';
-  return { at, res, k: null, a: null, d: null, map: s.map, note: `${s.map} · ${s.queueLabel}${s.queue === 'deathmatch' ? '' : `, placar ${s.ally}-${s.enemy}`} (registrado pelo app do PC, sem K/D)` };
+  return { at, res, k: null, a: null, d: null, map: s.map, mode: s.queueLabel, score: s.queue === 'deathmatch' ? null : [s.ally, s.enemy], note: `${s.map} · ${s.queueLabel}${s.queue === 'deathmatch' ? '' : `, placar ${s.ally}-${s.enemy}`} (registrado pelo app do PC, sem K/D)` };
 }
 
 module.exports = { parseLockfile, mapName, decodePresence, flatten, liveFromPresence, ValorantLive, parseShooterLog, summarizeMatch, matchFromPresence, MAP_TIPS, QUEUES };

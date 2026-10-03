@@ -49,7 +49,7 @@ class Tf2Console {
     parts.push(`melhor sequência ${this.best}`);
     if (w) parts.push(`mais abates com ${w.name}`);
     if (nem && nem.n >= 2) parts.push(`quem mais te matou: ${nem.name} (${nem.n})`);
-    return { at: now, res: '', k: this.kills, a: null, d: this.deaths, map: this.map, note: `${parts.join(', ')} (registrado pelo app do PC)` };
+    return { at: now, res: '', k: this.kills, a: null, d: this.deaths, map: this.map, best: this.best, note: `${parts.join(', ')} (registrado pelo app do PC)` };
   }
 }
 

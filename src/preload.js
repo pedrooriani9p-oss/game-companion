@@ -33,5 +33,30 @@ contextBridge.exposeInMainWorld('api', {
   show: () => ipcRenderer.invoke('show'),
   systemStats: () => ipcRenderer.invoke('system-stats'),
   onGameChanged: (cb) => ipcRenderer.on('game-changed', (_e, g) => cb(g)),
-  onMode: (cb) => ipcRenderer.on('mode', (_e, m) => cb(m))
+  onMode: (cb) => ipcRenderer.on('mode', (_e, m) => cb(m)),
+  onSettings: (cb) => ipcRenderer.on('settings', (_e, s) => cb(s)),
+  // Evolução
+  evolution: (game, days) => ipcRenderer.invoke('evolution', game, days),
+  evoSync: () => ipcRenderer.invoke('evo-sync'),
+  setGoals: (list) => ipcRenderer.invoke('set-goals', list),
+  askClaude: (game, days) => ipcRenderer.invoke('ask-claude', game, days),
+  onHistory: (cb) => ipcRenderer.on('history-changed', () => cb()),
+  // HUD
+  onHud: (cb) => ipcRenderer.on('hud', (_e, d) => cb(d)),
+  hudSize: (w, h) => ipcRenderer.invoke('hud-size', w, h),
+  setTimers: (list) => ipcRenderer.invoke('set-timers', list),
+  // Turbo
+  turboProcs: () => ipcRenderer.invoke('turbo-procs'),
+  turboClose: (name, force) => ipcRenderer.invoke('turbo-close', name, force),
+  onTurboDrop: (cb) => ipcRenderer.on('turbo-drop', (_e, d) => cb(d)),
+  onTurboPower: (cb) => ipcRenderer.on('turbo-power', (_e, s) => cb(s)),
+  // Clipes
+  saveClip: () => ipcRenderer.invoke('save-clip'),
+  clips: () => ipcRenderer.invoke('clips'),
+  openClip: (file) => ipcRenderer.invoke('open-clip', file),
+  openClipsFolder: () => ipcRenderer.invoke('open-clips-folder'),
+  onClips: (cb) => ipcRenderer.on('clips', (_e, c) => cb(c)),
+  onRec: (cb) => ipcRenderer.on('rec', (_e, m) => cb(m)),
+  recStatus: (st) => ipcRenderer.invoke('rec-status', st),
+  recFile: (buf, ms, meta) => ipcRenderer.invoke('rec-file', buf, ms, meta)
 });

@@ -1,7 +1,7 @@
 const { app, BrowserWindow, globalShortcut, ipcMain, shell, screen, desktopCapturer, clipboard, Tray, Menu, nativeImage, net } = require('electron');
 const http = require('http');
 const crypto = require('crypto');
-const { execFile, spawn } = require('child_process');
+const { execFile, execFileSync, spawn } = require('child_process');
 const os = require('os');
 const { FpsMeter } = require('./fps');
 const { checkLatest } = require('./updater');
@@ -13,6 +13,10 @@ const valorant = require('./live/valorant');
 const { MinecraftLog, gameDirFromCmdline } = require('./live/minecraft');
 const { Tf2Console, personaFromLoginUsers } = require('./live/tf2');
 const stardew = require('./live/stardew');
+const stats = require('./stats');
+const turbo = require('./turbo');
+const { fixDuration } = require('./webm');
+const { fixMp4Duration, mp4MediaDuration } = require('./mp4');
 const path = require('path');
 const si = require('systeminformation');
 const fs = require('fs');
@@ -219,10 +223,16 @@ async function pollGame() {
     if (currentGame) finishSession();
     if (found) { store.startSession(found.id); store.state.names[found.id] = found.name; }
     currentGame = found;
-    send('game-changed', currentGame);
-    syncFps(); syncLive();
+    onGameChanged();
   }
   store.save();
+}
+
+// Tudo que muda quando o jogo muda (ou fecha).
+function onGameChanged() {
+  send('game-changed', currentGame);
+  syncFps(); syncLive(); syncHud(); syncClips(); syncPower();
+  drops.reset(); turboDrops = []; send('turbo-drop', null);
 }
 
 function send(channel, payload) {
@@ -373,6 +383,8 @@ function sampleFps() {
   if (!r || !currentGame) return;
   sessionFps.push(r.fps); if (sessionFps.length > 20000) sessionFps.shift();
   if (r.low1 != null) sessionLow = sessionLow == null ? r.low1 : Math.min(sessionLow, r.low1);
+  const drop = drops.push(r.fps);
+  if (drop) onFpsDrop(drop);
 }
 function finishSession({ quiet = false } = {}) {
   const extra = sessionFps.length ? { fpsAvg: Math.round(sessionFps.reduce((a, b) => a + b, 0) / sessionFps.length), fpsLow: sessionLow } : {};
@@ -395,6 +407,7 @@ const CS2_PORT = 3971;
 const cs2 = new Cs2Live();
 let cs2Seen = 0;
 let cs2Status = 'off';
+let cs2RoundKills = 0;
 function cs2Token() {
   if (!store.state.cs2Token) { store.state.cs2Token = crypto.randomBytes(12).toString('hex'); store.save(); }
   return store.state.cs2Token;
@@ -428,6 +441,9 @@ function startCs2Server() {
       const { state, match } = cs2.update(p);
       send('cs2', state);
       if (match) onCs2Match(match);
+      // Clipe sozinho: 3 ou mais abates na mesma rodada.
+      const rk = state && state.roundKills;
+      if (rk != null) { if (rk >= 3 && rk > cs2RoundKills) autoClip(`(${rk} abates na rodada)`); cs2RoundKills = rk; }
     });
   });
   server.on('error', () => { cs2Status = 'port-busy'; send('cs2-status', cs2Status); });
@@ -443,7 +459,9 @@ function onCs2Match(m) {
 // Guarda uma partida (ou anotação do Diário, com prog) para mandar à página do Claude.
 function registerMatch(game, m, { toast = true } = {}) {
   store.state.pendingMatches = [...(store.state.pendingMatches || []), { game, ...m }];
+  const added = !m.prog && store.addMatch(game, { ...m, src: 'pc' });
   store.save();
+  if (added) { send('history-changed'); checkGoals(game); }
   const nums = m.k == null ? '' : m.a == null ? `, ${m.k} abates e ${m.d} mortes` : `, ${m.k}/${m.a}/${m.d}`;
   if (toast) notify(`🏁 Partida registrada: ${RES[m.res] || 'sem resultado'}${nums}. ${m.note.split(' (')[0]}`);
   deliverPending();
@@ -706,7 +724,7 @@ function tf2Live(id) {
         const e = con.line(l);
         if (!seen) { seen = true; msg = ''; }
         if (!e) continue;
-        if (e.type === 'kill') { sess.k++; sess.best = Math.max(sess.best, e.streak); if (e.streak % 5 === 0) notify(`🔥 Sequência de ${e.streak} abates!`); }
+        if (e.type === 'kill') { sess.k++; sess.best = Math.max(sess.best, e.streak); if (e.streak % 5 === 0) { notify(`🔥 Sequência de ${e.streak} abates!`); autoClip(`(sequência de ${e.streak})`); } }
         if (e.type === 'death') sess.d++;
         if (e.type === 'map' && e.previous) registerMatch('tf2', e.previous);
       }
@@ -855,6 +873,329 @@ async function coverFor(g) {
   return (coverCache[appId] = small ? `data:image/jpeg;base64,${small.toJPEG(82).toString('base64')}` : null);
 }
 
+// ---------- Desempenho do PC (amostra única, usada pelo painel, pelo HUD e pelo Turbo) ----------
+let lastSys = null;
+let sysBusy = null;
+function sampleSystem() {
+  if (sysBusy) return sysBusy;
+  sysBusy = (async () => {
+    try {
+      const [load, mem, temp, gfx] = await Promise.all([
+        si.currentLoad(), si.mem(), si.cpuTemperature(), si.graphics().catch(() => ({ controllers: [] }))
+      ]);
+      const gpu = gfx.controllers.find((c) => c.utilizationGpu != null) || gfx.controllers[0] || {};
+      lastSys = {
+        at: Date.now(),
+        cpu: Math.round(load.currentLoad),
+        cpuTemp: temp.main || null,
+        ramUsed: mem.active / 1024 ** 3,
+        ramTotal: mem.total / 1024 ** 3,
+        gpuName: gpu.model || null,
+        gpu: gpu.utilizationGpu ?? null,
+        gpuTemp: gpu.temperatureGpu ?? null,
+        vramUsed: gpu.memoryUsed != null ? gpu.memoryUsed / 1024 : null,
+        vramTotal: gpu.memoryTotal != null ? gpu.memoryTotal / 1024 : null
+      };
+      checkHeat(lastSys);
+    } catch {}
+    sysBusy = null;
+    return lastSys;
+  })();
+  return sysBusy;
+}
+
+// ---------- Evolução: histórico de partidas, metas e resumo da semana ----------
+const nameOfGame = (id) => store.state.names[id] || (games.find((g) => g.id === id) || {}).name || id;
+const num = (v) => (v === '' || v == null || !isFinite(Number(v)) ? null : Number(v));
+// Quem já tinha partidas do CS2 antes da Evolução começa com elas no histórico.
+function migrateHistory() {
+  if ((store.state.history || []).length || !(store.state.cs2Matches || []).length) return;
+  for (const m of store.state.cs2Matches) store.addMatch('cs2', { ...m, src: 'pc' });
+  store.save();
+}
+// Traz as partidas anotadas na página do Claude (à mão ou pelo print do placar) para a Evolução.
+let lastWebSync = 0;
+async function syncWebHistory({ force = false } = {}) {
+  if (quitting || (!force && Date.now() - lastWebSync < 5 * 60000)) return false;
+  lastWebSync = Date.now();
+  try {
+    const w = openClaude({ show: false });
+    const frame = await findAppFrame(w.webContents, 30000, 'gcGetMatches');
+    if (!frame) return false;
+    const data = await frame.executeJavaScript('window.gcGetMatches()').catch(() => null);
+    if (!data || typeof data !== 'object') return false;
+    let added = 0;
+    for (const [game, list] of Object.entries(data)) {
+      if (!/^[a-z0-9-]{1,48}$/.test(game) || !Array.isArray(list)) continue;
+      for (const m of list.slice(-500)) {
+        if (!m || !m.at || m.prog) continue;
+        const clean = { at: Number(m.at), res: ['V', 'D', 'E'].includes(m.res) ? m.res : '', k: num(m.k), a: num(m.a), d: num(m.d), note: String(m.note || '').slice(0, 300), src: 'web' };
+        const label = stats.mapOf(clean);
+        if (label) clean.mapLabel = label;
+        if (store.addMatch(game, clean)) added++;
+      }
+    }
+    if (added) { store.save(); send('history-changed'); }
+    return true;
+  } catch { return false; }
+}
+function evolutionFor(game, days) {
+  return stats.evolution({ history: store.state.history, sessions: store.state.sessions, goals: store.state.goals || [], game, days, nameOf: nameOfGame });
+}
+// Manda o relatório para a pergunta do Claude; sem a página pronta, deixa o texto copiado.
+async function askClaude(game, text) {
+  try {
+    const w = openClaude();
+    const frame = await findAppFrame(w.webContents, 30000, 'gcAsk');
+    if (frame) {
+      const ok = await frame.executeJavaScript(`window.gcAsk(${JSON.stringify(game)}, ${JSON.stringify(nameOfGame(game))}, ${JSON.stringify(text)})`).catch(() => false);
+      if (ok) return true;
+    }
+  } catch {}
+  clipboard.writeText(text);
+  notify('Copiei o relatório. Cole na pergunta da janela do Claude com Ctrl+V.');
+  return false;
+}
+function checkGoals(game = null) {
+  const now = Date.now();
+  let changed = false;
+  for (const g of store.state.goals || []) {
+    if (game && g.game && g.game !== game) continue;
+    const p = stats.goalProgress(g, store.state.history, store.state.sessions, now);
+    if (!p) continue;
+    const where = g.game ? ` no ${nameOfGame(g.game)}` : '';
+    if (p.done && !g.doneAt) { g.doneAt = now; changed = true; notify(`🎯 Meta batida${where}: ${p.label} chegou a ${p.valueText} (meta ${p.targetText}).`); }
+    if (p.over && g.warnedWeek !== stats.weekStart(now)) { g.warnedWeek = stats.weekStart(now); changed = true; notify(`⏳ Você passou de ${p.targetText} h de jogo esta semana${where}. Já são ${p.valueText} h.`); }
+  }
+  if (changed) { store.save(); send('history-changed'); }
+}
+function cleanGoals(list) {
+  const old = store.state.goals || [];
+  return (Array.isArray(list) ? list : []).slice(0, 12).map((g) => {
+    const type = stats.GOAL_TYPES[g.type] ? g.type : null, target = Number(g.target);
+    if (!type || !(target > 0)) return null;
+    const game = g.game && /^[a-z0-9-]{1,48}$/.test(g.game) ? g.game : null;
+    const id = String(g.id || Date.now() + Math.random()).slice(0, 40);
+    const prev = old.find((x) => x.id === id && x.type === type && x.target === target && x.game === game);
+    return { id, game, type, target, ...(prev && prev.doneAt ? { doneAt: prev.doneAt } : {}), ...(prev && prev.warnedWeek ? { warnedWeek: prev.warnedWeek } : {}) };
+  }).filter(Boolean);
+}
+// Aviso de segunda-feira com o resumo da semana que passou.
+function weeklyNotice() {
+  const now = Date.now(), wk = stats.weekStart(now);
+  if ((store.state.lastWeekly || 0) >= wk) return;
+  const line = stats.lastWeekLine(store.state.history, store.state.sessions, now, nameOfGame);
+  store.state.lastWeekly = wk; store.save();
+  if (line) notify(`${line} Veja mais na aba Evolução.`);
+}
+// Limite de jogo por dia (Turbo e pausas).
+function checkDailyLimit() {
+  const lim = Number(store.state.settings.dailyLimitMin) || 0;
+  if (!lim || !currentGame) return;
+  const today = stats.dayStart(Date.now());
+  const sec = stats.playSeconds(store.state.sessions, today, Date.now() + 1);
+  if (sec / 60 >= lim && store.state.limitWarned !== today) {
+    store.state.limitWarned = today; store.save();
+    notify(`⏳ Você já jogou ${stats.fmtHours(sec)} hoje, e o seu limite é ${stats.fmtHours(lim * 60)}. Que tal parar por hoje?`);
+  }
+}
+
+// ---------- HUD no jogo (janela pequena por cima do jogo, que deixa passar os cliques) ----------
+let hudWin = null;
+let hudOff = false;      // Ctrl+Shift+H esconde até o próximo jogo
+let panelTimers = [];    // timers do painel, para o HUD mostrar o próximo
+const hudWanted = () => Boolean(store.state.settings.hud && currentGame && !hudOff);
+function hudWindow() {
+  if (hudWin && !hudWin.isDestroyed()) return hudWin;
+  hudWin = new BrowserWindow({
+    width: 220, height: 40, frame: false, transparent: true, resizable: false, skipTaskbar: true, alwaysOnTop: true,
+    focusable: false, show: false, hasShadow: false,
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), backgroundThrottling: false },
+  });
+  hudWin.setAlwaysOnTop(true, 'screen-saver');
+  hudWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  hudWin.setIgnoreMouseEvents(true);
+  hudWin.loadFile(path.join(__dirname, 'renderer', 'hud.html'));
+  hudWin.once('ready-to-show', () => { if (hudWanted()) hudWin.showInactive(); });
+  hudWin.on('closed', () => { hudWin = null; });
+  return hudWin;
+}
+// O HUD fica no canto escolhido da tela inteira (o jogo em tela cheia cobre a barra de tarefas).
+function placeHud(width, height) {
+  if (!hudWin || hudWin.isDestroyed()) return;
+  const corner = store.state.settings.hudCorner || 'tl', area = screen.getPrimaryDisplay().bounds, m = 10;
+  const w = Math.max(60, Math.min(600, Math.ceil(width))), h = Math.max(20, Math.min(400, Math.ceil(height)));
+  const x = corner.endsWith('l') ? area.x + m : area.x + area.width - w - m;
+  const y = corner.startsWith('t') ? area.y + m : area.y + area.height - h - m;
+  hudWin.setBounds({ x, y, width: w, height: h });
+}
+function syncHud() {
+  if (currentGame == null) hudOff = false;
+  if (!hudWanted()) { if (hudWin && !hudWin.isDestroyed()) hudWin.hide(); return; }
+  const w = hudWindow();
+  if (!w.webContents.isLoading() && !w.isVisible()) w.showInactive();
+  hudTick();
+}
+function hudTick() {
+  if (!hudWin || hudWin.isDestroyed() || !hudWin.isVisible()) return;
+  const f = fps.meter && fps.meter.read();
+  const last = store.state.sessions[store.state.sessions.length - 1];
+  const c = cs2.state;
+  hudWin.webContents.send('hud', {
+    items: store.state.settings.hudItems || {},
+    session: last && last.end === null && currentGame ? last.start : null,
+    fps: f && f.fps != null ? f.fps : null, low1: f ? f.low1 ?? null : null,
+    sys: lastSys && Date.now() - lastSys.at < 10000 ? { cpu: lastSys.cpu, gpu: lastSys.gpu, cpuTemp: lastSys.cpuTemp, gpuTemp: lastSys.gpuTemp } : null,
+    timers: panelTimers.filter((t) => t.end > Date.now()).sort((a, b) => a.end - b.end).slice(0, 2),
+    cs2: c ? { map: c.mapLabel, ct: c.ctScore, t: c.tScore, team: c.team, money: c.money, phase: c.phase, roundPhase: c.roundPhase, buy: c.buy } : null,
+    live: liveCard && liveCard.compact ? { title: liveCard.title.replace(/ ao vivo$/, ''), text: liveCard.compact } : null,
+    rec: clips.status === 'on',
+  });
+}
+
+// ---------- PC turbo: o que está pesando, quedas de FPS, temperatura e plano de energia ----------
+const drops = new turbo.DropDetector();
+let turboDrops = [];
+let lastProcs = [];
+let lastDropToast = 0, lastHeatToast = 0, heatCount = 0;
+async function heavyProcesses() {
+  try {
+    const p = await si.processes();
+    lastProcs = turbo.topProcesses(p.list, { exclude: currentGame ? currentGame.exe : [], cpuCount: os.cpus().length });
+  } catch { lastProcs = []; }
+  return lastProcs;
+}
+async function onFpsDrop(drop) {
+  const top = await heavyProcesses();
+  const why = turbo.diagnoseDrop({ sys: lastSys || {}, top });
+  const ev = { at: Date.now(), ...drop, ...why };
+  turboDrops = [...turboDrops, ev].slice(-20);
+  send('turbo-drop', ev);
+  if (store.state.settings.turboAlerts !== false && Date.now() - lastDropToast > 5 * 60000) {
+    lastDropToast = Date.now();
+    notify(`📉 FPS caiu de ${drop.from} para ${drop.to}. ${why.text}`);
+  }
+}
+function checkHeat(sys) {
+  const hot = (sys.cpuTemp || 0) >= 90 || (sys.gpuTemp || 0) >= 85;
+  heatCount = hot ? heatCount + 1 : 0;
+  if (heatCount >= 5 && currentGame && store.state.settings.turboAlerts !== false && Date.now() - lastHeatToast > 10 * 60000) {
+    lastHeatToast = Date.now();
+    const parts = [];
+    if ((sys.cpuTemp || 0) >= 90) parts.push(`processador a ${Math.round(sys.cpuTemp)}°C`);
+    if ((sys.gpuTemp || 0) >= 85) parts.push(`placa de vídeo a ${Math.round(sys.gpuTemp)}°C`);
+    notify(`🌡️ PC esquentando: ${parts.join(' e ')}. Ele pode ficar mais lento para esfriar.`);
+  }
+}
+// Fecha um programa da lista: primeiro pede para fechar (como o X da janela); na segunda vez, força.
+function processRunning(name) {
+  return new Promise((resolve) => execFile('tasklist', ['/fo', 'csv', '/nh', '/fi', `IMAGENAME eq ${name}`], { windowsHide: true }, (err, out) =>
+    resolve(!err && out.toLowerCase().includes(`"${name.toLowerCase()}"`))));
+}
+async function closeProcess(name, force) {
+  if (process.platform !== 'win32') return { closed: false, msg: 'Só funciona no Windows.' };
+  if (!lastProcs.some((p) => p.name === name) || turbo.isProtected(name)) return { closed: false, msg: 'Esse programa não pode ser fechado por aqui.' };
+  await new Promise((resolve) => execFile('taskkill', ['/IM', name, '/T', ...(force ? ['/F'] : [])], { windowsHide: true }, () => resolve()));
+  await new Promise((r) => setTimeout(r, 2500));
+  const still = await processRunning(name);
+  if (!still) lastProcs = lastProcs.filter((p) => p.name !== name);
+  return { closed: !still, msg: still ? (force ? 'Não consegui fechar. Ele pode precisar de administrador.' : 'Ele não fechou. Clique de novo para forçar (o que não estiver salvo nele se perde).') : '' };
+}
+// Plano "Alto desempenho" do Windows enquanto joga; o plano anterior volta quando o jogo fecha.
+const powercfg = (args) => new Promise((resolve) => execFile('powercfg', args, { windowsHide: true }, (err, out) => resolve(err ? null : out)));
+let powerStatus = 'off';
+let powerChain = Promise.resolve();
+function syncPower() {
+  powerChain = powerChain.then(async () => {
+    if (process.platform !== 'win32') { powerStatus = 'unavailable'; return; }
+    const want = Boolean(store.state.settings.turboPower && currentGame);
+    if (want && !store.state.savedPowerScheme) {
+      const list = await powercfg(['/list']);
+      if (!list || !turbo.hasScheme(list, turbo.HIGH_PERF)) { powerStatus = 'unavailable'; return; }
+      const cur = turbo.parseScheme(await powercfg(['/getactivescheme']));
+      if (cur && cur !== turbo.HIGH_PERF && await powercfg(['/setactive', turbo.HIGH_PERF]) != null) { store.state.savedPowerScheme = cur; store.save(); }
+      powerStatus = 'on';
+    } else if (!want && store.state.savedPowerScheme) {
+      await powercfg(['/setactive', store.state.savedPowerScheme]);
+      delete store.state.savedPowerScheme; store.save();
+      powerStatus = 'off';
+    } else if (!want) powerStatus = 'off';
+  }).catch(() => {}).then(() => send('turbo-power', powerStatus));
+  return powerChain;
+}
+function restorePowerSync() {
+  if (!store || !store.state.savedPowerScheme || process.platform !== 'win32') return;
+  try { execFileSync('powercfg', ['/setactive', store.state.savedPowerScheme], { windowsHide: true }); } catch {}
+  delete store.state.savedPowerScheme;
+}
+
+// ---------- Clipes: os últimos segundos da tela, salvos com um atalho ----------
+const clips = { status: 'off', msg: '' };
+let recWin = null;
+let autoClipTimer = null, lastAutoClip = 0;
+const clipsDir = () => path.join(app.getPath('videos'), 'Game Companion');
+const clipsWanted = () => Boolean(store.state.settings.clips && currentGame);
+function clipsInfo() {
+  const list = (store.state.clips || []).filter((c) => mtime(c.file)).slice(0, 8)
+    .map((c) => ({ file: c.file, name: path.basename(c.file), at: c.at, ms: c.ms, game: c.game, reason: c.reason || '' }));
+  return { status: clips.status, msg: clips.msg, list, dir: clipsDir(), seconds: store.state.settings.clipSeconds || 30 };
+}
+function setClipsStatus(status, msg = '') { clips.status = status; clips.msg = msg; send('clips', clipsInfo()); }
+async function startRecorder() {
+  if (recWin && !recWin.isDestroyed()) return;
+  recWin = new BrowserWindow({ show: false, width: 320, height: 200, skipTaskbar: true, webPreferences: { preload: path.join(__dirname, 'preload.js'), backgroundThrottling: false } });
+  recWin.on('closed', () => { recWin = null; globalShortcut.unregister('CommandOrControl+Shift+C'); if (clips.status !== 'error') setClipsStatus('off'); });
+  setClipsStatus('starting');
+  try { await recWin.loadFile(path.join(__dirname, 'renderer', 'recorder.html')); } catch { return; }
+  if (!recWin || recWin.isDestroyed()) return;
+  try {
+    const d = screen.getPrimaryDisplay();
+    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } });
+    const src = sources.find((x) => String(x.display_id) === String(d.id)) || sources[0];
+    if (!src) throw new Error('sem tela');
+    const q = store.state.settings.clipQuality === '1080' ? { width: 1920, height: 1080, bitrate: 8e6 } : { width: 1280, height: 720, bitrate: 5e6 };
+    if (recWin && !recWin.isDestroyed()) recWin.webContents.send('rec', { type: 'start', sourceId: src.id, seconds: Number(store.state.settings.clipSeconds) || 30, ...q });
+  } catch { setClipsStatus('error', 'Não consegui acessar a tela para gravar.'); stopRecorder(); return; }
+  if (!globalShortcut.isRegistered('CommandOrControl+Shift+C') && !globalShortcut.register('CommandOrControl+Shift+C', () => saveClip(''))) {
+    clips.msg = 'Outro programa já usa Ctrl+Shift+C. Salve pelo botão no painel.';
+  }
+}
+function stopRecorder() {
+  if (recWin && !recWin.isDestroyed()) recWin.destroy();
+  recWin = null;
+  globalShortcut.unregister('CommandOrControl+Shift+C');
+}
+function syncClips() {
+  if (clipsWanted()) startRecorder(); else { stopRecorder(); if (clips.status !== 'error' || !store.state.settings.clips) setClipsStatus('off'); }
+}
+function saveClip(reason) {
+  if (!recWin || recWin.isDestroyed() || clips.status !== 'on') { notify(store.state.settings.clips ? 'A gravação dos clipes ainda está começando. Tente de novo em alguns segundos.' : 'Ligue os clipes em Ajustes para salvar jogadas.'); return; }
+  recWin.webContents.send('rec', { type: 'save', reason });
+}
+// Jogada boa (CS2, TF2): salva sozinho alguns segundos depois, para pegar o fim da jogada.
+function autoClip(reason) {
+  if (!store.state.settings.clips || store.state.settings.clipAuto === false || clips.status !== 'on') return;
+  clearTimeout(autoClipTimer);
+  autoClipTimer = setTimeout(() => { if (Date.now() - lastAutoClip < 20000) return; lastAutoClip = Date.now(); saveClip(reason); }, 3500);
+}
+const fileStamp = (t = new Date()) => `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')} ${String(t.getHours()).padStart(2, '0')}-${String(t.getMinutes()).padStart(2, '0')}-${String(t.getSeconds()).padStart(2, '0')}`;
+function writeClip(buf, ms, meta = {}) {
+  const dir = clipsDir();
+  fs.mkdirSync(dir, { recursive: true });
+  const ext = /mp4/.test(meta.mime || '') ? 'mp4' : 'webm';
+  const base = String(currentGame ? currentGame.name : 'Clipe').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40) || 'Clipe';
+  const file = path.join(dir, `${base} ${fileStamp()}.${ext}`);
+  let data = Buffer.from(buf);
+  // Escreve a duração no cabeçalho (o MP4 conta o tempo real do vídeo; o WebM usa o tempo gravado).
+  if (ext === 'mp4') { ms = mp4MediaDuration(data) || ms; data = fixMp4Duration(data, ms); } else data = fixDuration(data, ms);
+  fs.writeFileSync(file, data);
+  store.state.clips = [{ file, at: Date.now(), ms: Math.round(ms), game: currentGame && currentGame.id, reason: meta.reason || '' }, ...(store.state.clips || [])].slice(0, 30);
+  store.save();
+  notify(`🎬 Clipe salvo: ${Math.round(ms / 1000)} s${meta.reason ? ` ${meta.reason}` : ''}. Ele fica em Vídeos, pasta Game Companion.`);
+  send('clips', clipsInfo());
+  return file;
+}
+
 // ---------- Ícone perto do relógio ----------
 let tray = null;
 const loginExe = () => process.env.PORTABLE_EXECUTABLE_FILE || process.execPath;
@@ -865,6 +1206,8 @@ function buildTrayMenu() {
     { label: 'Mostrar ou esconder o painel', click: togglePanel },
     { label: 'Abrir o Claude', click: () => openClaude() },
     { label: 'Print do placar', click: captureScoreboard },
+    { label: 'Salvar clipe', click: () => saveClip('') },
+    { label: 'Mostrar ou esconder o HUD', click: toggleHud },
     { type: 'separator' },
     { label: 'Iniciar com o Windows', type: 'checkbox', checked: startsWithWindows(),
       click: (item) => { app.setLoginItemSettings({ openAtLogin: item.checked, path: loginExe(), args: ['--hidden'] }); buildTrayMenu(); } },
@@ -888,16 +1231,63 @@ function registerShortcuts() {
   globalShortcut.register('CommandOrControl+Shift+M', () => setCompact(!compact));
   globalShortcut.register('CommandOrControl+Shift+W', openWeb);
   globalShortcut.register('CommandOrControl+Shift+P', captureScoreboard);
+  globalShortcut.register('CommandOrControl+Shift+H', toggleHud);
+}
+// Ctrl+Shift+H: liga o HUD (se estava desligado nos ajustes) ou esconde até o próximo jogo.
+function toggleHud() {
+  if (!store.state.settings.hud) { store.state.settings = { ...store.state.settings, hud: true }; store.save(); hudOff = false; send('settings', store.state.settings); }
+  else hudOff = !hudOff;
+  syncHud();
+  if (!currentGame) notify('O HUD aparece por cima do jogo quando um jogo estiver aberto.');
 }
 
 function registerIpc() {
-  ipcMain.handle('get-state', () => ({ games, currentGame, state: store.state, mode: { clickThrough, compact }, cs2: cs2.state, cs2Status, live: liveCard, settings: store.state.settings, version: app.getVersion() }));
+  ipcMain.handle('get-state', () => ({ games, currentGame, state: store.state, mode: { clickThrough, compact }, cs2: cs2.state, cs2Status, live: liveCard, settings: store.state.settings, version: app.getVersion(), clips: clipsInfo(), power: powerStatus, drops: turboDrops }));
+  // Evolução
+  ipcMain.handle('evolution', (_e, game, days) => evolutionFor(game || null, [7, 30, 0].includes(days) ? days : 30));
+  ipcMain.handle('evo-sync', () => syncWebHistory({ force: Date.now() - lastWebSync > 60000 }));
+  ipcMain.handle('set-goals', (_e, list) => { store.state.goals = cleanGoals(list); store.save(); checkGoals(); return store.state.goals; });
+  ipcMain.handle('ask-claude', (_e, game, days) => {
+    const ev = evolutionFor(game || null, [7, 30, 0].includes(days) ? days : 30);
+    return ev.game ? askClaude(ev.game, stats.claudeReport(ev)) : false;
+  });
+  // HUD
+  ipcMain.handle('hud-size', (_e, w, h) => placeHud(Number(w) || 200, Number(h) || 40));
+  ipcMain.handle('set-timers', (_e, list) => { panelTimers = (Array.isArray(list) ? list : []).slice(0, 20).map((t) => ({ label: String(t.label || '').slice(0, 40), end: Number(t.end) || 0 })); hudTick(); });
+  // Turbo
+  ipcMain.handle('turbo-procs', () => heavyProcesses());
+  ipcMain.handle('turbo-close', (_e, name, force) => closeProcess(String(name || ''), Boolean(force)));
+  // Clipes
+  ipcMain.handle('save-clip', () => saveClip(''));
+  ipcMain.handle('clips', () => clipsInfo());
+  ipcMain.handle('open-clip', (_e, file) => { if ((store.state.clips || []).some((c) => c.file === file) && mtime(file)) shell.openPath(file); });
+  ipcMain.handle('open-clips-folder', () => { fs.mkdirSync(clipsDir(), { recursive: true }); shell.openPath(clipsDir()); });
+  ipcMain.handle('rec-status', (_e, st) => {
+    if (!st || !['on', 'error', 'starting'].includes(st.status)) return;
+    setClipsStatus(st.status, String(st.msg || clips.msg || '').slice(0, 200));
+    if (st.status === 'error') stopRecorder();
+    hudTick();
+  });
+  ipcMain.handle('rec-file', (_e, buf, ms, meta) => { try { return writeClip(buf, Number(ms) || 0, meta || {}); } catch { notify('Não consegui salvar o clipe na pasta Vídeos.'); return null; } });
   ipcMain.handle('cover', (_e, g) => coverFor(g).catch(() => null));
   ipcMain.handle('set-setting', (_e, key, value) => {
-    if (!['opacity', 'size', 'cornerToasts', 'sound'].includes(key)) return;
-    store.state.settings = { ...store.state.settings, [key]: value };
+    const allowed = {
+      opacity: (v) => Math.max(55, Math.min(100, Number(v) || 90)), size: (v) => (v === 'grande' ? 'grande' : 'normal'),
+      cornerToasts: Boolean, sound: Boolean, hud: Boolean, hudCorner: (v) => (['tl', 'tr', 'bl', 'br'].includes(v) ? v : 'tl'),
+      hudItems: (v) => Object.fromEntries(Object.keys(store.state.settings.hudItems || {}).map((k) => [k, Boolean(v && v[k])])),
+      turboPower: Boolean, turboAlerts: Boolean, dailyLimitMin: (v) => Math.max(0, Math.min(24 * 60, Math.round(Number(v) || 0))),
+      clips: Boolean, clipSeconds: (v) => ([15, 30, 60].includes(Number(v)) ? Number(v) : 30), clipAuto: Boolean, clipQuality: (v) => (v === '1080' ? '1080' : '720'),
+    };
+    if (!allowed[key]) return;
+    store.state.settings = { ...store.state.settings, [key]: allowed[key](value) };
     store.save();
     if (key === 'size') { win.webContents.setZoomFactor(zoom()); setCompact(compact); }
+    if (key === 'hud') hudOff = false;
+    if (key.startsWith('hud')) { syncHud(); if (key === 'hudCorner' && hudWin && !hudWin.isDestroyed()) { const b = hudWin.getBounds(); placeHud(b.width, b.height); } }
+    if (key === 'turboPower') syncPower();
+    if (key === 'clips') syncClips();
+    if (['clipSeconds', 'clipQuality'].includes(key) && recWin) { stopRecorder(); syncClips(); }
+    return store.state.settings;
   });
   // Encaixa o painel num canto da tela onde ele está.
   ipcMain.handle('snap', (_e, corner) => {
@@ -916,7 +1306,7 @@ function registerIpc() {
     if (!currentGame || !currentGame.auto || !currentGame.exe[0]) return;
     store.state.ignoredExe = [...new Set([...(store.state.ignoredExe || []), currentGame.exe[0].toLowerCase()])];
     finishSession({ quiet: true });
-    currentGame = null; send('game-changed', null); syncFps(); syncLive(); store.save();
+    currentGame = null; onGameChanged(); store.save();
   });
   ipcMain.handle('save-note', (_e, gameId, text) => { store.state.notes[gameId] = text; store.save(); });
   ipcMain.handle('save-reminders', (_e, reminders) => { store.state.reminders = reminders; store.save(); });
@@ -926,14 +1316,13 @@ function registerIpc() {
     manualGame = Boolean(gameId);
     currentGame = games.find((g) => g.id === gameId) || null;
     if (currentGame) store.startSession(currentGame.id);
-    send('game-changed', currentGame);
-    syncFps(); syncLive();
+    onGameChanged();
   });
   ipcMain.handle('open-url', (_e, url) => {
     if (/^https:\/\//.test(url)) shell.openExternal(url);
   });
   ipcMain.handle('set-compact', (_e, on) => setCompact(on));
-  ipcMain.handle('open-web', () => openWeb());
+  ipcMain.handle('open-web', () => { openWeb(); });
   ipcMain.handle('open-web-external', () => shell.openExternal(webUrl()));
   ipcMain.handle('capture-score', () => captureScoreboard());
   ipcMain.handle('fps', () => ({ status: fps.status, ...(fps.meter && fps.meter.read()) }));
@@ -941,23 +1330,7 @@ function registerIpc() {
   ipcMain.handle('open-update', (_e, url) => { if (/^https:\/\/github\.com\//.test(url)) shell.openExternal(url); });
   ipcMain.handle('hide', () => win.hide());
   ipcMain.handle('show', () => win.showInactive());
-  ipcMain.handle('system-stats', async () => {
-    const [load, mem, temp, gfx] = await Promise.all([
-      si.currentLoad(), si.mem(), si.cpuTemperature(), si.graphics().catch(() => ({ controllers: [] }))
-    ]);
-    const gpu = gfx.controllers.find((c) => c.utilizationGpu != null) || gfx.controllers[0] || {};
-    return {
-      cpu: Math.round(load.currentLoad),
-      cpuTemp: temp.main || null,
-      ramUsed: mem.active / 1024 ** 3,
-      ramTotal: mem.total / 1024 ** 3,
-      gpuName: gpu.model || null,
-      gpu: gpu.utilizationGpu ?? null,
-      gpuTemp: gpu.temperatureGpu ?? null,
-      vramUsed: gpu.memoryUsed != null ? gpu.memoryUsed / 1024 : null,
-      vramTotal: gpu.memoryTotal != null ? gpu.memoryTotal / 1024 : null
-    };
-  });
+  ipcMain.handle('system-stats', async () => (lastSys && Date.now() - lastSys.at < 1500 ? lastSys : sampleSystem()));
 }
 
 // Só um Game Companion aberto: abrir de novo mostra o painel que já está rodando.
@@ -976,9 +1349,17 @@ app.whenReady().then(() => {
   startForegroundWatch();
   refreshLibrary(); setInterval(refreshLibrary, 10 * 60 * 1000);
   startCs2Server(); installCs2Config();
-  // Partidas que ficaram sem enviar da última vez.
+  // Partidas que ficaram sem enviar da última vez; depois traz as anotadas na página do Claude.
   setTimeout(deliverPending, 20000);
+  setTimeout(() => syncWebHistory(), 45000);
   setInterval(sampleFps, 2000);
+  migrateHistory();
+  syncPower();
+  // O PC é medido a cada 2 s enquanto um jogo está aberto (Turbo e HUD) ou o painel está à vista.
+  setInterval(() => { if (currentGame || (win && win.isVisible())) sampleSystem(); }, 2000);
+  setInterval(hudTick, 1000);
+  setInterval(() => { checkGoals(); checkDailyLimit(); }, 60000);
+  setTimeout(weeklyNotice, 30000); setInterval(weeklyNotice, 3600000);
   pollGame();
   setInterval(pollGame, POLL_MS);
   // Procura versão nova ao abrir e a cada 6 horas.
@@ -990,6 +1371,7 @@ app.on('will-quit', () => {
   globalShortcut.unregisterAll();
   stopFps();
   if (fgProc) { try { fgProc.kill(); } catch {} }
-  if (store) { finishSession({ quiet: true }); store.save(); }
+  stopRecorder();
+  if (store) { finishSession({ quiet: true }); restorePowerSync(); store.save(); }
   if (liveMod) liveMod.stop();
 });

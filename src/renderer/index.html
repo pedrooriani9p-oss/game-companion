@@ -21,6 +21,14 @@
     <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></symbol>
     <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
     <symbol id="i-edit" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></symbol>
+    <symbol id="i-trend" viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></symbol>
+    <symbol id="i-zap" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></symbol>
+    <symbol id="i-film" viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="20" rx="2.2"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></symbol>
+    <symbol id="i-flag" viewBox="0 0 24 24"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></symbol>
+    <symbol id="i-trophy" viewBox="0 0 24 24"><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3"/><path d="M7 5H4v2a3 3 0 0 0 3 3"/></symbol>
+    <symbol id="i-map" viewBox="0 0 24 24"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></symbol>
     <symbol id="i-radio" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8a6 6 0 0 1 0 8.5"/><path d="M7.8 16.2a6 6 0 0 1 0-8.5"/><path d="M19.1 4.9a10 10 0 0 1 0 14.2"/><path d="M4.9 19.1a10 10 0 0 1 0-14.2"/></symbol>
     <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
   </svg>
@@ -54,7 +62,8 @@
 
     <nav class="tabs">
       <button data-tab="jogo" class="active"><svg><use href="#i-target"/></svg>Jogo</button>
-      <button data-tab="desempenho"><svg><use href="#i-activity"/></svg>Desempenho</button>
+      <button data-tab="evolucao"><svg><use href="#i-trend"/></svg>Evolução</button>
+      <button data-tab="turbo"><svg><use href="#i-zap"/></svg>Turbo</button>
       <button data-tab="timers"><svg><use href="#i-clock"/></svg>Timers</button>
       <button data-tab="ajustes"><svg><use href="#i-sliders"/></svg>Ajustes</button>
     </nav>
@@ -98,6 +107,13 @@
           <div id="cs2-last" class="lines"></div>
         </div>
 
+        <div id="clips-card" class="card" hidden>
+          <div class="card-head"><span id="clips-pill" class="pill-rec"><i></i>Clipes</span><b id="clips-title">Clipes</b>
+            <button id="btn-save-clip" class="btn small-btn"><svg><use href="#i-film"/></svg>Salvar agora</button></div>
+          <div id="clips-msg" class="muted small"></div>
+          <ul id="clips-list" class="list clips"></ul>
+        </div>
+
         <div class="card">
           <div class="card-label"><svg><use href="#i-bulb"/></svg>Dica do momento</div>
           <p id="tip" class="tip">Abra um jogo para ver dicas.</p>
@@ -121,7 +137,79 @@
         </label>
       </section>
 
-      <section id="tab-desempenho" class="tab">
+      <section id="tab-evolucao" class="tab">
+        <div class="evo-head">
+          <select id="evo-game" title="Jogo"></select>
+          <div class="seg" id="evo-days"><button data-days="7">7 dias</button><button data-days="30" class="on">30 dias</button><button data-days="0">Tudo</button></div>
+        </div>
+        <div class="tiles four">
+          <div class="tile"><span>Partidas</span><b id="e-n">–</b><i id="e-n-d"></i></div>
+          <div class="tile"><span>Vitórias</span><b id="e-win">–</b><i id="e-win-d"></i></div>
+          <div class="tile"><span>K/D</span><b id="e-kd">–</b><i id="e-kd-d"></i></div>
+          <div class="tile"><span>Tempo</span><b id="e-time">–</b><i id="e-time-d"></i></div>
+        </div>
+        <div id="evo-empty" class="card note" hidden></div>
+
+        <div id="evo-chart-card" class="card">
+          <div class="card-label"><svg><use href="#i-trend"/></svg>K/D por partida</div>
+          <div id="evo-trend" class="small muted"></div>
+          <svg id="evo-chart" class="chart" viewBox="0 0 340 120"></svg>
+          <div class="small muted legend"><i class="dot win"></i>vitória <i class="dot loss"></i>derrota <i class="dot none"></i>sem resultado <i class="line-key"></i>média de 5</div>
+        </div>
+
+        <div class="card">
+          <div class="card-label"><svg><use href="#i-calendar"/></svg>Tempo de jogo por dia</div>
+          <svg id="evo-play" class="chart" viewBox="0 0 340 90"></svg>
+          <div id="evo-play-info" class="small muted"></div>
+        </div>
+
+        <div id="evo-maps-card" class="card">
+          <div class="card-label"><svg><use href="#i-map"/></svg>Mapas</div>
+          <table id="evo-maps" class="grid"></table>
+          <div id="evo-maps-note" class="small muted"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-label"><svg><use href="#i-trophy"/></svg>Recordes</div>
+          <div id="evo-records" class="records"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-label"><svg><use href="#i-flag"/></svg>Metas</div>
+          <div id="evo-goals" class="goals"></div>
+          <form id="goal-form" class="goal-form">
+            <select id="goal-type">
+              <option value="kd">K/D mínimo</option>
+              <option value="win">% de vitórias mínimo</option>
+              <option value="kills">Abates por partida</option>
+              <option value="matches">Partidas na semana</option>
+              <option value="hours">Horas na semana (máximo)</option>
+            </select>
+            <input id="goal-target" type="number" min="0" step="any" class="num" value="1.2">
+            <button class="btn">Criar</button>
+          </form>
+          <div class="small muted">K/D, vitórias e abates contam as últimas 20 partidas do jogo escolhido lá em cima. A de horas vale para todos os jogos.</div>
+        </div>
+
+        <div class="card">
+          <div class="card-label"><svg><use href="#i-layers"/></svg>Esta semana × semana passada</div>
+          <div id="evo-week"></div>
+          <button id="btn-evo-ask" class="btn wide"><svg><use href="#i-chat"/></svg>Pedir dicas ao Claude sobre a minha evolução</button>
+          <div id="evo-ask-msg" class="small muted"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-label">Sessões recentes</div>
+          <table id="sessions"></table>
+        </div>
+        <div class="card">
+          <div class="card-label">Tempo total por jogo</div>
+          <table id="playtime"></table>
+        </div>
+        <div id="evo-src" class="small muted center"></div>
+      </section>
+
+      <section id="tab-turbo" class="tab">
         <div class="card fps-card">
           <div><span class="card-label">FPS do jogo</span><b id="v-fps">–</b><span id="v-low" class="muted small"></span></div>
           <button id="btn-fps-admin" class="btn" hidden>Ativar FPS (pede administrador)</button>
@@ -136,17 +224,24 @@
           <div class="small muted legend"><i class="dot cpu"></i>CPU <i class="dot gpu"></i>GPU (últimos 2 min)</div>
         </div>
         <div class="card">
+          <div class="card-label"><svg><use href="#i-activity"/></svg>O que está pesando</div>
+          <ul id="procs" class="list procs"></ul>
+          <div id="procs-msg" class="small muted">Steam, antivírus, drivers e o anti-cheat do jogo ficam de fora da lista.</div>
+        </div>
+        <div class="card">
+          <div class="card-label"><svg><use href="#i-zap"/></svg>Quedas de FPS nesta sessão</div>
+          <ul id="drops" class="list drops"></ul>
+        </div>
+        <div class="card">
+          <div class="card-label">Turbo</div>
+          <label class="set-row">Desempenho máximo do Windows enquanto joga <input id="set-turbo-power" type="checkbox" class="switch"></label>
+          <div id="power-msg" class="small muted"></div>
+          <label class="set-row">Avisar quando o FPS cair ou o PC esquentar <input id="set-turbo-alerts" type="checkbox" class="switch"></label>
+        </div>
+        <div class="card">
           <div class="card-label">FPS por sessão <span id="fps-hist-game" class="muted"></span></div>
           <canvas id="fps-hist" width="340" height="90"></canvas>
           <div id="fps-hist-info" class="small muted"></div>
-        </div>
-        <div class="card">
-          <div class="card-label">Sessões recentes</div>
-          <table id="sessions"></table>
-        </div>
-        <div class="card">
-          <div class="card-label">Tempo de jogo</div>
-          <table id="playtime"></table>
         </div>
       </section>
 
@@ -178,6 +273,11 @@
             <button class="btn">Adicionar</button>
           </form>
         </div>
+        <div class="card">
+          <div class="card-label">Limite de jogo por dia</div>
+          <label class="set-row">Avisar quando eu passar de <span class="row tight"><input id="set-daily-limit" type="number" min="0" max="24" step="0.5" class="num" placeholder="0"> horas</span></label>
+          <div class="small muted">Deixe 0 para não ter limite. O aviso aparece uma vez por dia.</div>
+        </div>
       </section>
 
       <section id="tab-ajustes" class="tab">
@@ -198,6 +298,31 @@
           <label class="set-row">Iniciar com o Windows <input id="set-autostart" type="checkbox" class="switch"></label>
         </div>
         <div class="card">
+          <div class="card-label"><svg><use href="#i-layers"/></svg>HUD no jogo</div>
+          <label class="set-row">Mostrar um mini painel por cima do jogo <input id="set-hud" type="checkbox" class="switch"></label>
+          <div class="set-row">Canto da tela
+            <div class="seg" id="set-hud-corner"><button data-corner="tl" title="Em cima à esquerda">↖</button><button data-corner="tr" title="Em cima à direita">↗</button><button data-corner="bl" title="Embaixo à esquerda">↙</button><button data-corner="br" title="Embaixo à direita">↘</button></div>
+          </div>
+          <div class="chips toggles" id="set-hud-items">
+            <button data-item="fps">FPS</button><button data-item="perf">CPU e GPU</button><button data-item="session">Tempo de sessão</button>
+            <button data-item="clock">Relógio</button><button data-item="timer">Timers</button><button data-item="cs2">CS2 e dica de compra</button><button data-item="live">Outros jogos ao vivo</button>
+          </div>
+          <div class="small muted">Os cliques passam direto para o jogo. Aparece com o jogo em janela ou em tela cheia sem borda.</div>
+        </div>
+        <div class="card">
+          <div class="card-label"><svg><use href="#i-film"/></svg>Clipes</div>
+          <label class="set-row">Gravar os últimos segundos enquanto joga <input id="set-clips" type="checkbox" class="switch"></label>
+          <div class="set-row">Duração do clipe
+            <div class="seg" id="set-clip-seconds"><button data-sec="15">15 s</button><button data-sec="30">30 s</button><button data-sec="60">60 s</button></div>
+          </div>
+          <div class="set-row">Qualidade
+            <div class="seg" id="set-clip-quality"><button data-q="720">720p</button><button data-q="1080">1080p</button></div>
+          </div>
+          <label class="set-row">Salvar sozinho em jogadas boas <input id="set-clip-auto" type="checkbox" class="switch"></label>
+          <div class="small muted">Jogada boa: 3 ou mais abates numa rodada do CS2, ou sequência de 5 no TF2. Gravar usa um pouco do PC; se o FPS cair, use 720p.</div>
+          <div class="row"><button id="btn-clips-folder" class="btn ghost"><svg><use href="#i-film"/></svg>Abrir a pasta dos clipes</button></div>
+        </div>
+        <div class="card">
           <div class="card-label">Atalhos</div>
           <table class="keys">
             <tr><td>Mostrar ou esconder</td><td><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>G</kbd></td></tr>
@@ -205,6 +330,8 @@
             <tr><td>Modo compacto</td><td><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>M</kbd></td></tr>
             <tr><td>Abrir o Claude</td><td><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>W</kbd></td></tr>
             <tr><td>Print do placar</td><td><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>P</kbd></td></tr>
+            <tr><td>Mostrar ou esconder o HUD</td><td><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>H</kbd></td></tr>
+            <tr><td>Salvar clipe</td><td><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>C</kbd></td></tr>
           </table>
         </div>
         <div class="card about">
