@@ -58,6 +58,9 @@ async function refreshFps() {
   $('#v-fps').style.color = f.fps == null ? '' : f.fps >= 60 ? 'var(--ok, #5ad1a0)' : f.fps >= 30 ? 'var(--warn, #ffb547)' : '#ff6b6b';
   $('#v-low').textContent = f.low1 != null ? `1% mais lento: ${f.low1}` : f.status === 'needs-admin' ? 'precisa de permissão' : '';
   $('#btn-fps-admin').hidden = f.status !== 'needs-admin';
+  $('#t-fps').textContent = $('#v-fps').textContent;
+  $('#t-fps').style.color = $('#v-fps').style.color;
+  $('#hero-fps').textContent = f.fps != null ? `${f.fps} FPS` : '';
 }
 $('#btn-compact').onclick = () => window.api.setCompact(true);
 $('#btn-expand').onclick = () => window.api.setCompact(false);
@@ -75,6 +78,9 @@ function setGame(g) {
   tipIndex = 0;
   $('#game-name').textContent = g ? g.name : 'Nenhum jogo detectado';
   $('#auto-note').hidden = !(g && g.auto);
+  document.body.classList.toggle('playing', Boolean(g));
+  renderHero(g);
+  renderTotal();
   renderCs2();
   $('#notes').value = g ? state.notes[g.id] || '' : '';
   $('#notes').disabled = !g;
@@ -86,6 +92,30 @@ function setGame(g) {
     b.onclick = () => window.api.openUrl(url);
     $('#guides').appendChild(b);
   });
+}
+
+// Capa: arte do jogo (Steam) quando existe; senão um degradê com a cor do nome e as iniciais.
+const initials = (name) => String(name).replace(/[^\p{L}\p{N} ]/gu, ' ').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+const hueOf = (text) => [...String(text)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
+let heroFor = null;
+async function renderHero(g) {
+  const key = g ? g.id : null;
+  heroFor = key;
+  const art = $('#hero-art');
+  document.documentElement.style.setProperty('--hue', g ? hueOf(g.name) : 160);
+  art.style.backgroundImage = ''; art.classList.remove('cover');
+  $('#hero-mark').textContent = g ? initials(g.name) : '';
+  if (!g) return;
+  let url = null;
+  try { url = await window.api.cover(g); } catch {}
+  if (!url || heroFor !== key) return;
+  art.style.backgroundImage = `url("${url}")`; art.classList.add('cover');
+  $('#hero-mark').textContent = '';
+}
+function renderTotal() {
+  const sec = game && state ? state.playtime[game.id] || 0 : 0;
+  // Formato curto para caber no quadrinho (ex.: 20h 05m).
+  $('#t-total').textContent = !game || sec < 60 ? '–' : sec >= 3600 ? `${Math.floor(sec / 3600)}h ${String(Math.floor((sec % 3600) / 60)).padStart(2, '0')}m` : `${Math.floor(sec / 60)} min`;
 }
 
 function renderTip() {
@@ -167,6 +197,7 @@ async function refreshState() {
 const nameOf = (id) => (games.find((g) => g.id === id) || {}).name || state.names[id] || id;
 
 function renderPlaytime() {
+  renderTotal();
   const rows = Object.entries(state.playtime).sort((a, b) => b[1] - a[1]);
   $('#playtime').innerHTML = rows.length
     ? rows.map(([id, sec]) => {
@@ -315,6 +346,7 @@ function alertUser(text) {
 }
 
 function beep() {
+  if (settings.sound === false) return;
   const ac = new AudioContext();
   [0, 0.25, 0.5].forEach((t) => {
     const o = ac.createOscillator(), g = ac.createGain();
@@ -383,7 +415,8 @@ $('#sw-reset').onclick = () => { stopwatch.acc = 0; stopwatch.start = Date.now()
 function tick() {
   const now = Date.now();
   const session = sessionStart ? fmt((now - sessionStart) / 1000) : '';
-  $('#session').textContent = session ? `sessão ${session}` : 'aguardando jogo';
+  $('#session').textContent = session ? `jogando · ${session}` : 'aguardando jogo';
+  $('#t-session').textContent = session || '–';
 
   for (const t of [...timers]) {
     if (now >= t.end) { timers.splice(timers.indexOf(t), 1); alertUser(`${t.label}: tempo esgotado!`); }
@@ -409,13 +442,47 @@ function tick() {
   $('#c-perf').textContent = lastStats ? `CPU ${lastStats.cpu}%${lastStats.gpu != null ? ` · GPU ${lastStats.gpu}%` : ''}` : '';
   const next = [...timers].sort((a, b) => a.end - b.end)[0];
   $('#c-timer').textContent = next ? `⏰ ${fmt((next.end - now) / 1000)}` : '';
+  // Na barra compacta, esconde as bolinhas que não cabem inteiras.
+  if (document.body.classList.contains('compact')) {
+    const box = $('#compact-bar .pills');
+    [...box.children].forEach((el) => { el.style.visibility = ''; });
+    const right = box.getBoundingClientRect().right + 1;
+    [...box.children].forEach((el) => { if (el.getBoundingClientRect().right > right) el.style.visibility = 'hidden'; });
+  }
 }
+
+// ---------- Ajustes ----------
+let settings = {};
+function applySettings() {
+  document.documentElement.style.setProperty('--alpha', (settings.opacity ?? 90) / 100);
+  $('#set-opacity').value = settings.opacity ?? 90;
+  $$('#set-size button').forEach((b) => b.classList.toggle('on', b.dataset.size === (settings.size || 'normal')));
+  $('#set-corner-toasts').checked = settings.cornerToasts !== false;
+  $('#set-sound').checked = settings.sound !== false;
+}
+function setSetting(key, value) { settings[key] = value; applySettings(); window.api.setSetting(key, value); }
+$('#set-opacity').oninput = (e) => setSetting('opacity', Number(e.target.value));
+$$('#set-size button').forEach((b) => b.onclick = () => setSetting('size', b.dataset.size));
+$$('#set-corner button').forEach((b) => b.onclick = () => window.api.snap(b.dataset.corner));
+$('#set-corner-toasts').onchange = (e) => setSetting('cornerToasts', e.target.checked);
+$('#set-sound').onchange = (e) => setSetting('sound', e.target.checked);
+$('#set-autostart').onchange = async (e) => { $('#set-autostart').checked = await window.api.setAutostart(e.target.checked); };
+$('#btn-check-update').onclick = async () => {
+  $('#update-status').textContent = 'Procurando...';
+  let u = null; try { u = await window.api.checkUpdate(); } catch {}
+  $('#update-status').textContent = u ? `Versão ${u.version} disponível.` : 'Você já tem a versão mais nova.';
+  if (u) { const el = $('#update'); el.textContent = `⬆️ Versão ${u.version} disponível. Clique para baixar.`; el.hidden = false; el.onclick = () => window.api.openUpdate(u.url); }
+};
 
 // ---------- Início ----------
 (async () => {
   const init = await window.api.getState();
   games = init.games; state = init.state; cs2State = init.cs2; cs2Status = init.cs2Status; liveCard = init.live;
   games.forEach((g) => $('#game-select').add(new Option(g.name, g.id)));
+  settings = init.settings || {};
+  applySettings();
+  $('#app-version').textContent = init.version ? `versão ${init.version}` : '';
+  window.api.getAutostart().then((on) => { $('#set-autostart').checked = on; }).catch(() => {});
   applyMode(init.mode);
   setGame(init.currentGame);
   renderReminders();

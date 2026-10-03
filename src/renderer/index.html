@@ -2,132 +2,230 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
   <title>Game Companion</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- Ícones (traço simples, herdam a cor do texto) -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8z"/></symbol>
+    <symbol id="i-shrink" viewBox="0 0 24 24"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></symbol>
+    <symbol id="i-expand" viewBox="0 0 24 24"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+    <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></symbol>
+    <symbol id="i-activity" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></symbol>
+    <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></symbol>
+    <symbol id="i-radio" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8a6 6 0 0 1 0 8.5"/><path d="M7.8 16.2a6 6 0 0 1 0-8.5"/><path d="M19.1 4.9a10 10 0 0 1 0 14.2"/><path d="M4.9 19.1a10 10 0 0 1 0-14.2"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
+  </svg>
+
   <div id="panel">
-    <header class="drag">
-      <div class="title">
-        <span id="game-name">Nenhum jogo detectado</span>
-        <span id="session" class="muted">sessão 00:00</span>
+    <header id="hero" class="drag">
+      <div id="hero-art"></div>
+      <div id="hero-mark"></div>
+      <div class="hero-top">
+        <div class="brand"><span class="brand-dot"></span>Game Companion</div>
+        <div class="actions no-drag">
+          <button id="btn-shot" class="icon-btn" title="Print do placar para o Claude ler (Ctrl+Shift+P)"><svg><use href="#i-camera"/></svg></button>
+          <button id="btn-web" class="icon-btn" title="Abrir o Claude: perguntas, partidas, imagens (Ctrl+Shift+W)"><svg><use href="#i-chat"/></svg></button>
+          <button id="btn-compact" class="icon-btn" title="Modo compacto (Ctrl+Shift+M)"><svg><use href="#i-shrink"/></svg></button>
+          <button id="btn-hide" class="icon-btn" title="Esconder (Ctrl+Shift+G). O app continua no ícone perto do relógio."><svg><use href="#i-x"/></svg></button>
+        </div>
       </div>
-      <div class="actions no-drag">
-        <button id="btn-shot" title="Print do placar para o Claude ler (Ctrl+Shift+P)">📷</button>
-        <button id="btn-web" title="Abrir o Claude: perguntas, partidas, imagens (Ctrl+Shift+W)">🤖</button>
-        <button id="btn-compact" title="Modo compacto (Ctrl+Shift+M)">▭</button>
-        <button id="btn-hide" title="Esconder (Ctrl+Shift+G). O app continua no ícone perto do relógio.">✕</button>
+      <div class="hero-bottom">
+        <div id="game-name">Nenhum jogo detectado</div>
+        <div class="hero-meta"><i id="live-dot"></i><span id="session">aguardando jogo</span><span id="hero-fps"></span></div>
       </div>
     </header>
 
     <div id="compact-bar" class="drag">
-      <span id="c-game"></span><span id="c-session"></span><span id="c-cs2"></span><span id="c-fps"></span><span id="c-perf"></span><span id="c-timer"></span>
-      <button id="btn-expand" class="no-drag" title="Expandir">▢</button>
+      <i id="c-dot"></i><span id="c-game"></span>
+      <div class="pills"><span id="c-session"></span><span id="c-cs2"></span><span id="c-fps"></span><span id="c-timer"></span><span id="c-perf"></span></div>
+      <button id="btn-expand" class="icon-btn no-drag" title="Expandir"><svg><use href="#i-expand"/></svg></button>
     </div>
 
-    <div id="banner" hidden></div>
-    <div id="update" hidden></div>
-
     <nav class="tabs">
-      <button data-tab="jogo" class="active">Jogo</button>
-      <button data-tab="desempenho">Desempenho</button>
-      <button data-tab="timers">Timers</button>
+      <button data-tab="jogo" class="active"><svg><use href="#i-target"/></svg>Jogo</button>
+      <button data-tab="desempenho"><svg><use href="#i-activity"/></svg>Desempenho</button>
+      <button data-tab="timers"><svg><use href="#i-clock"/></svg>Timers</button>
+      <button data-tab="ajustes"><svg><use href="#i-sliders"/></svg>Ajustes</button>
     </nav>
 
     <main>
+      <button id="update" class="update" hidden></button>
+
       <section id="tab-jogo" class="tab active">
-        <label class="row">Jogo:
-          <select id="game-select"><option value="">Automático</option></select>
-        </label>
+        <div class="tiles">
+          <div class="tile"><span>Sessão</span><b id="t-session">–</b></div>
+          <div class="tile"><span>FPS</span><b id="t-fps">–</b></div>
+          <div class="tile"><span>Total no jogo</span><b id="t-total">–</b></div>
+        </div>
+
         <div id="auto-note" class="card note" hidden>
-          <span>Reconhecido automaticamente. Para dicas e um guia deste jogo, toque em 🤖.</span>
+          <span>Reconhecido automaticamente. Para dicas e um guia deste jogo, abra o Claude.</span>
           <button id="btn-not-game" class="link" title="Este programa não será mais reconhecido como jogo">Não é um jogo</button>
         </div>
-        <div id="live-card" class="card cs2" hidden>
-          <div class="cs2-head"><b id="live-title"></b><span id="live-sub" class="muted"></span></div>
-          <div id="live-stats" class="live-stats"></div>
-          <div id="live-lines" class="small"></div>
-          <p id="live-tip" class="cs2-tip"></p>
+
+        <div id="live-card" class="card live" hidden>
+          <div class="card-head"><span class="pill-live"><svg><use href="#i-radio"/></svg>Ao vivo</span><b id="live-title"></b><span id="live-sub" class="muted"></span></div>
+          <div id="live-stats" class="stats"></div>
+          <div id="live-lines" class="lines"></div>
+          <p id="live-tip" class="tip-line"></p>
           <div id="live-msg" class="muted small"></div>
         </div>
-        <div id="cs2-card" class="card cs2" hidden>
-          <div class="cs2-head"><b id="cs2-map">CS2 ao vivo</b><span id="cs2-round" class="muted"></span></div>
+
+        <div id="cs2-card" class="card live" hidden>
+          <div class="card-head"><span class="pill-live"><svg><use href="#i-radio"/></svg>Ao vivo</span><b id="cs2-map">CS2</b><span id="cs2-round" class="muted"></span></div>
           <div id="cs2-live" hidden>
-            <div class="cs2-score"><span id="cs2-ct-box" class="ct">CT <b id="cs2-ct">0</b></span><span class="muted">x</span><span id="cs2-t-box" class="t"><b id="cs2-t">0</b> T</span></div>
-            <div class="cs2-stats"><span>K/A/D <b id="cs2-kad">–</b></span><span>$ <b id="cs2-money">–</b></span><span>❤ <b id="cs2-hp">–</b></span></div>
+            <div class="score"><span id="cs2-ct-box" class="ct">CT <b id="cs2-ct">0</b></span><span class="muted">x</span><span id="cs2-t-box" class="t"><b id="cs2-t">0</b> T</span></div>
+            <div class="stats">
+              <div><b id="cs2-kad">–</b><span>K/A/D</span></div>
+              <div><b id="cs2-money">–</b><span>Dinheiro</span></div>
+              <div><b id="cs2-hp">–</b><span>Vida</span></div>
+            </div>
             <div id="cs2-watch" class="muted small" hidden>Você morreu: os números acima são os seus na partida.</div>
-            <p id="cs2-tip" class="cs2-tip"></p>
+            <p id="cs2-tip" class="tip-line"></p>
           </div>
           <div id="cs2-msg" class="muted small"></div>
-          <div id="cs2-last" class="small"></div>
+          <div id="cs2-last" class="lines"></div>
         </div>
-        <div class="card tip-card">
-          <div class="muted small">Dica do momento</div>
-          <p id="tip">Abra um jogo para ver dicas.</p>
+
+        <div class="card">
+          <div class="card-label"><svg><use href="#i-bulb"/></svg>Dica do momento</div>
+          <p id="tip" class="tip">Abra um jogo para ver dicas.</p>
           <button id="btn-next-tip" class="link">Próxima dica →</button>
         </div>
+
         <div id="guides" class="chips"></div>
-        <form id="search" class="row">
+        <form id="search" class="searchbar">
+          <svg><use href="#i-search"/></svg>
           <input id="search-q" placeholder="Pesquisar guia (ex.: como vencer o chefe)">
-          <button>Buscar</button>
+          <button class="btn">Buscar</button>
         </form>
-        <div class="muted small">Minhas anotações</div>
-        <textarea id="notes" placeholder="Builds, senhas, onde parei..."></textarea>
+
+        <div class="card">
+          <div class="card-label"><svg><use href="#i-edit"/></svg>Minhas anotações</div>
+          <textarea id="notes" placeholder="Builds, senhas, onde parei..."></textarea>
+        </div>
+
+        <label class="row muted small-row"><span class="nowrap">Escolher o jogo</span>
+          <select id="game-select"><option value="">Automático</option></select>
+        </label>
       </section>
 
       <section id="tab-desempenho" class="tab">
-        <div class="fps-row"><span>FPS</span><b id="v-fps">–</b><span id="v-low" class="muted small"></span><button id="btn-fps-admin" class="link" hidden>Ativar FPS (pede administrador)</button></div>
-        <div class="meter"><span>CPU</span><div class="bar"><i id="m-cpu"></i></div><b id="v-cpu">–</b></div>
-        <div class="meter"><span>GPU</span><div class="bar"><i id="m-gpu"></i></div><b id="v-gpu">–</b></div>
-        <div class="meter"><span>RAM</span><div class="bar"><i id="m-ram"></i></div><b id="v-ram">–</b></div>
-        <div class="meter"><span>VRAM</span><div class="bar"><i id="m-vram"></i></div><b id="v-vram">–</b></div>
-        <div class="small muted" id="temps"></div>
-        <canvas id="spark" width="340" height="70"></canvas>
-        <div class="small muted legend"><i class="dot cpu"></i>CPU <i class="dot gpu"></i>GPU (últimos 2 min)</div>
-        <h3>FPS por sessão <span id="fps-hist-game" class="muted"></span></h3>
-        <canvas id="fps-hist" width="340" height="90"></canvas>
-        <div id="fps-hist-info" class="small muted"></div>
-        <h3>Sessões recentes</h3>
-        <table id="sessions"></table>
-        <h3>Tempo de jogo</h3>
-        <table id="playtime"></table>
+        <div class="card fps-card">
+          <div><span class="card-label">FPS do jogo</span><b id="v-fps">–</b><span id="v-low" class="muted small"></span></div>
+          <button id="btn-fps-admin" class="btn" hidden>Ativar FPS (pede administrador)</button>
+        </div>
+        <div class="card">
+          <div class="meter"><span>CPU</span><div class="bar"><i id="m-cpu"></i></div><b id="v-cpu">–</b></div>
+          <div class="meter"><span>GPU</span><div class="bar"><i id="m-gpu"></i></div><b id="v-gpu">–</b></div>
+          <div class="meter"><span>RAM</span><div class="bar"><i id="m-ram"></i></div><b id="v-ram">–</b></div>
+          <div class="meter"><span>VRAM</span><div class="bar"><i id="m-vram"></i></div><b id="v-vram">–</b></div>
+          <div class="small muted" id="temps"></div>
+          <canvas id="spark" width="340" height="70"></canvas>
+          <div class="small muted legend"><i class="dot cpu"></i>CPU <i class="dot gpu"></i>GPU (últimos 2 min)</div>
+        </div>
+        <div class="card">
+          <div class="card-label">FPS por sessão <span id="fps-hist-game" class="muted"></span></div>
+          <canvas id="fps-hist" width="340" height="90"></canvas>
+          <div id="fps-hist-info" class="small muted"></div>
+        </div>
+        <div class="card">
+          <div class="card-label">Sessões recentes</div>
+          <table id="sessions"></table>
+        </div>
+        <div class="card">
+          <div class="card-label">Tempo de jogo</div>
+          <table id="playtime"></table>
+        </div>
       </section>
 
       <section id="tab-timers" class="tab">
-        <div class="muted small">Cronômetro rápido</div>
-        <div class="chips">
-          <button data-min="1">1 min</button><button data-min="3">3 min</button>
-          <button data-min="5">5 min</button><button data-min="10">10 min</button>
+        <div class="card">
+          <div class="card-label">Cronômetro rápido</div>
+          <div class="chips">
+            <button data-min="1">1 min</button><button data-min="3">3 min</button>
+            <button data-min="5">5 min</button><button data-min="10">10 min</button>
+          </div>
+          <form id="timer-form" class="row">
+            <input id="timer-label" placeholder="Nome (ex.: respawn do Barão)">
+            <input id="timer-min" type="number" min="0.1" step="any" value="5" class="num">
+            <button class="btn">Iniciar</button>
+          </form>
+          <ul id="timers" class="list"></ul>
         </div>
-        <form id="timer-form" class="row">
-          <input id="timer-label" placeholder="Nome (ex.: respawn do Barão)">
-          <input id="timer-min" type="number" min="0.1" step="any" value="5" class="num">
-          <button>Iniciar</button>
-        </form>
-        <ul id="timers" class="list"></ul>
+        <div class="card">
+          <div class="card-label">Cronômetro</div>
+          <div class="row"><b id="stopwatch" class="big">00:00</b>
+            <button id="sw-toggle" class="btn">Iniciar</button><button id="sw-reset" class="btn ghost">Zerar</button></div>
+        </div>
+        <div class="card">
+          <div class="card-label">Lembretes recorrentes</div>
+          <ul id="reminders" class="list"></ul>
+          <form id="reminder-form" class="row">
+            <input id="rem-label" placeholder="Lembrete">
+            <input id="rem-min" type="number" min="1" value="45" class="num">
+            <button class="btn">Adicionar</button>
+          </form>
+        </div>
+      </section>
 
-        <div class="muted small">Cronômetro</div>
-        <div class="row"><b id="stopwatch" class="big">00:00</b>
-          <button id="sw-toggle">Iniciar</button><button id="sw-reset">Zerar</button></div>
-
-        <div class="muted small">Lembretes recorrentes</div>
-        <ul id="reminders" class="list"></ul>
-        <form id="reminder-form" class="row">
-          <input id="rem-label" placeholder="Lembrete">
-          <input id="rem-min" type="number" min="1" value="45" class="num">
-          <button>Adicionar</button>
-        </form>
+      <section id="tab-ajustes" class="tab">
+        <div class="card">
+          <div class="card-label">Aparência</div>
+          <label class="set-row">Transparência do painel <input id="set-opacity" type="range" min="55" max="100" step="5"></label>
+          <div class="set-row">Tamanho
+            <div class="seg" id="set-size"><button data-size="normal">Normal</button><button data-size="grande">Grande</button></div>
+          </div>
+          <div class="set-row">Posição na tela
+            <div class="seg" id="set-corner"><button data-corner="tl" title="Canto de cima à esquerda">↖</button><button data-corner="tr" title="Canto de cima à direita">↗</button><button data-corner="bl" title="Canto de baixo à esquerda">↙</button><button data-corner="br" title="Canto de baixo à direita">↘</button></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-label">Avisos</div>
+          <label class="set-row">Avisos no canto da tela com o painel escondido <input id="set-corner-toasts" type="checkbox" class="switch"></label>
+          <label class="set-row">Som quando um timer acaba <input id="set-sound" type="checkbox" class="switch"></label>
+          <label class="set-row">Iniciar com o Windows <input id="set-autostart" type="checkbox" class="switch"></label>
+        </div>
+        <div class="card">
+          <div class="card-label">Atalhos</div>
+          <table class="keys">
+            <tr><td>Mostrar ou esconder</td><td><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>G</kbd></td></tr>
+            <tr><td>Cliques atravessam o painel</td><td><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>X</kbd></td></tr>
+            <tr><td>Modo compacto</td><td><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>M</kbd></td></tr>
+            <tr><td>Abrir o Claude</td><td><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>W</kbd></td></tr>
+            <tr><td>Print do placar</td><td><kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>P</kbd></td></tr>
+          </table>
+        </div>
+        <div class="card about">
+          <div><b>Game Companion</b> <span id="app-version" class="muted"></span></div>
+          <div class="row">
+            <button id="btn-check-update" class="btn ghost"><svg><use href="#i-download"/></svg>Procurar atualização</button>
+            <button id="btn-browser" class="btn ghost">Abrir no navegador</button>
+          </div>
+          <div id="update-status" class="muted small"></div>
+        </div>
       </section>
     </main>
+
+    <div id="banner" hidden></div>
+
     <div id="summary" class="overlay" hidden>
       <div class="sheet">
         <div class="muted small">Sessão encerrada</div>
         <h2 id="sum-name"></h2>
-        <div class="sum-grid">
-          <div><b id="sum-time">–</b><span>tempo</span></div>
-          <div><b id="sum-fps">–</b><span>FPS médio</span></div>
-          <div><b id="sum-low">–</b><span>FPS mais baixo</span></div>
+        <div class="tiles">
+          <div class="tile"><span>Tempo</span><b id="sum-time">–</b></div>
+          <div class="tile"><span>FPS médio</span><b id="sum-fps">–</b></div>
+          <div class="tile"><span>FPS mínimo</span><b id="sum-low">–</b></div>
         </div>
         <div id="sum-compare" class="muted small"></div>
         <ul id="sum-high" class="sum-high"></ul>
@@ -137,7 +235,6 @@
         <div class="row end"><button id="sum-close" class="link">Fechar</button></div>
       </div>
     </div>
-    <footer class="muted small">Ctrl+Shift+G mostrar/esconder · Ctrl+Shift+X atravessar cliques · Ctrl+Shift+M compacto · Ctrl+Shift+W Claude · Ctrl+Shift+P print do placar · <button id="btn-browser" class="link">abrir no navegador</button></footer>
   </div>
   <script src="app.js"></script>
 </body>

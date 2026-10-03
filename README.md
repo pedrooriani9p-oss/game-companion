@@ -1,6 +1,6 @@
 # Game Companion
 
-Um painel que fica por cima do jogo (overlay) no PC, com três partes:
+Um painel que fica por cima do jogo (overlay) no PC. No topo aparece a capa do jogo (a arte que a Steam guarda no PC, ou baixada da loja; jogos fora da Steam ganham um degradê com as iniciais), o tempo da sessão e o FPS. As abas são:
 
 - **Jogo**: detecta sozinho o jogo aberto, mostra uma dica a cada 90 segundos, atalhos para guias e wikis, busca de guia no Google e um bloco de anotações por jogo. Reconhece **qualquer jogo**: os da lista, os instalados pela Steam, Epic e GOG, os que estão nas pastas de jogos (Xbox, Riot, EA, Ubisoft, Rockstar...) e qualquer programa em tela cheia. Se ele confundir um programa com jogo, toque em "Não é um jogo".
 - **CS2 ao vivo**: pelo Game State Integration (recurso oficial da Valve), mostra mapa, rodada, placar, seu K/A/D, dinheiro, vida e dicas do mapa. No fim da partida, ela é registrada sozinha em Partidas, na janela do Claude. O app coloca o arquivo `gamestate_integration_gamecompanion.cfg` na pasta `cfg` do CS2; feche e abra o CS2 uma vez depois da primeira vez que abrir o app.
@@ -13,7 +13,11 @@ Um painel que fica por cima do jogo (overlay) no PC, com três partes:
 - **Resumo da sessão**: ao fechar um jogo (depois de 2 minutos ou mais), o painel mostra tempo, FPS médio, FPS mais baixo e a comparação com a sua média. Dá para avaliar a sessão (👍 😐 👎) e deixar um comentário.
 - **Timers**: cronômetros rápidos (1, 3, 5, 10 min ou com nome), cronômetro normal e lembretes recorrentes (ex.: beber água a cada 30 min). Quando um timer acaba, o painel aparece, toca um bipe e mostra um aviso.
 
-![Jogo](screenshots/jogo.png) ![Desempenho](screenshots/desempenho.png) ![Timers](screenshots/timers.png)
+- **Ajustes**: transparência do painel, tamanho (Normal ou Grande), posição em qualquer canto da tela, avisos no canto da tela, som dos timers, iniciar com o Windows, atalhos e procurar atualização.
+
+Os avisos (partida registrada, morte no Minecraft, dia salvo no Stardew, print do placar) aparecem no canto da tela mesmo com o painel escondido.
+
+![Jogo](screenshots/jogo.png) ![Desempenho](screenshots/desempenho.png) ![Timers](screenshots/timers.png) ![Ajustes](screenshots/ajustes.png)
 
 ## Atalhos
 

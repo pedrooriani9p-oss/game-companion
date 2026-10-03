@@ -1,0 +1,8 @@
+html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; font: 13px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; color: #eef0f6; user-select: none; }
+#stack { position: absolute; right: 0; bottom: 0; left: 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; padding: 8px; }
+.toast { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; background: rgba(20, 23, 31, 0.94); border: 1px solid rgba(255, 255, 255, 0.1); border-left: 4px solid #5ad1a0; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5); animation: in .25s ease-out; }
+.toast.out { animation: out .3s ease-in forwards; }
+.toast .brand { font-size: 10px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; color: #8d93a5; margin-bottom: 2px; }
+.toast .text { font-weight: 600; }
+@keyframes in { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: none; } }
+@keyframes out { to { opacity: 0; transform: translateX(20px); } }

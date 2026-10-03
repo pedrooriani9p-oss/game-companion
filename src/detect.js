@@ -38,7 +38,7 @@ function prettyName(raw) {
 // steam: [{ name, installdir, lib }], epic: textos dos arquivos .item, gog: saída de `reg query ... /s`.
 function buildLibrary({ steam = [], epic = [], gog = '' } = {}) {
   const lib = [];
-  for (const s of steam) if (s.name && s.installdir && s.lib) lib.push({ name: s.name, dir: path.win32.join(s.lib, 'steamapps', 'common', s.installdir) });
+  for (const s of steam) if (s.name && s.installdir && s.lib) lib.push({ name: s.name, dir: path.win32.join(s.lib, 'steamapps', 'common', s.installdir), ...(s.appId ? { appId: s.appId } : {}) });
   for (const text of epic) {
     try { const j = JSON.parse(text); if (j.DisplayName && j.InstallLocation) lib.push({ name: j.DisplayName, dir: j.InstallLocation }); } catch {}
   }
@@ -61,9 +61,9 @@ function identifyForeground(fg, library = [], ignored = []) {
   const lower = exeName.toLowerCase();
   if (NOT_GAMES.has(lower) || (ignored || []).includes(lower)) return null;
   const full = String(fg.exe);
-  const make = (name) => ({ id: `x-${slug(name)}`, name, exe: [exeName], tips: [], guides: [], auto: true });
+  const make = (name, appId) => ({ id: `x-${slug(name)}`, name, exe: [exeName], tips: [], guides: [], auto: true, ...(appId ? { appId } : {}) });
   const inLib = library.find((g) => g.dir && full.toLowerCase().startsWith(String(g.dir).toLowerCase().replace(/\\?$/, '\\')));
-  if (inLib) return make(inLib.name);
+  if (inLib) return make(inLib.name, inLib.appId);
   for (const re of GAME_DIRS) {
     const m = full.match(re);
     if (m && !LAUNCHER_FOLDERS.test(m[1])) return make(prettyName(m[1]));

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, globalShortcut, ipcMain, shell, screen, desktopCapturer, clipboard, Tray, Menu, nativeImage } = require('electron');
+const { app, BrowserWindow, globalShortcut, ipcMain, shell, screen, desktopCapturer, clipboard, Tray, Menu, nativeImage, net } = require('electron');
 const http = require('http');
 const crypto = require('crypto');
 const { execFile, spawn } = require('child_process');
@@ -24,6 +24,9 @@ const POLL_MS = 5000;
 const WEB_URL = 'https://claude.ai/artifact/Ho5efgDtKM6hrW9ib6Yvcm';
 const FULL = { width: 380, height: 560 };
 const COMPACT = { width: 380, height: 64 };
+const ZOOM = { normal: 1, grande: 1.15 };
+const zoom = () => ZOOM[(store && store.state.settings && store.state.settings.size) || 'normal'] || 1;
+const scaled = (sz) => ({ width: Math.round(sz.width * zoom()), height: Math.round(sz.height * zoom()) });
 // Repositório no GitHub com as versões publicadas ("dono/nome"). Vazio desliga o aviso de atualização.
 const UPDATE_REPO = 'pedrooriani9p-oss/game-companion';
 // O login do Google recusa navegadores "embutidos"; sem a marca do Electron a janela do Claude se apresenta como Chrome.
@@ -38,10 +41,11 @@ let compact = false;
 
 function createWindow({ hidden = false } = {}) {
   const { workArea } = screen.getPrimaryDisplay();
+  const full = scaled(FULL);
   win = new BrowserWindow({
-    ...FULL,
+    ...full,
     show: !hidden,
-    x: workArea.x + workArea.width - FULL.width - 20,
+    x: workArea.x + workArea.width - full.width - 20,
     y: workArea.y + 20,
     frame: false,
     transparent: true,
@@ -56,6 +60,7 @@ function createWindow({ hidden = false } = {}) {
   // Nível "screen-saver" fica por cima de jogos em tela cheia sem borda.
   win.setAlwaysOnTop(true, 'screen-saver');
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  win.webContents.on('did-finish-load', () => win.webContents.setZoomFactor(zoom()));
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 }
 
@@ -128,7 +133,8 @@ async function refreshLibrary() {
       for (const f of fs.readdirSync(path.join(lib, 'steamapps')).filter((x) => /^appmanifest_\d+\.acf$/.test(x))) {
         const text = fs.readFileSync(path.join(lib, 'steamapps', f), 'utf8');
         const dir = (text.match(/"installdir"\s+"([^"]+)"/) || [])[1];
-        steam.push({ name: parseAcfName(text), installdir: dir, lib });
+        const appId = Number((text.match(/"appid"\s+"(\d+)"/) || [])[1]) || null;
+        steam.push({ name: parseAcfName(text), installdir: dir, lib, appId });
       }
     } catch {}
   }
@@ -203,7 +209,7 @@ async function pollGame() {
     else {
       const fg = identifyForeground(foreground, library, store.state.ignoredExe);
       // Jogo da Steam fora da lista: mesmo id que a janela daria (x-nome), para não abrir duas sessões.
-      found = fg || (found && { ...found, id: `x-${slug(found.name)}`, auto: true });
+      found = fg || (found && { ...found, id: `x-${slug(found.name)}`, auto: true, appId: Number(found.id.slice(6)) || undefined });
     }
   }
   if (currentGame) store.addPlaytime(currentGame.id, POLL_MS / 1000);
@@ -231,10 +237,14 @@ function setClickThrough(on) {
 
 function setCompact(on) {
   compact = on;
-  const size = on ? COMPACT : FULL;
+  const size = scaled(on ? COMPACT : FULL);
   // Algumas plataformas ignoram setSize em janela não redimensionável.
   win.setResizable(true);
-  win.setBounds({ ...win.getBounds(), ...size });
+  // Mantém o painel dentro da tela quando ele cresce (tamanho Grande).
+  const b = { ...win.getBounds(), ...size }, wa = screen.getDisplayMatching(win.getBounds()).workArea;
+  b.x = Math.max(wa.x, Math.min(b.x, wa.x + wa.width - b.width));
+  b.y = Math.max(wa.y, Math.min(b.y, wa.y + wa.height - b.height));
+  win.setBounds(b);
   win.setResizable(false);
   send('mode', { clickThrough, compact });
 }
@@ -295,22 +305,22 @@ async function captureScoreboard() {
     const size = { width: Math.round(d.size.width * d.scaleFactor), height: Math.round(d.size.height * d.scaleFactor) };
     const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: size });
     const src = sources.find((s) => String(s.display_id) === String(d.id)) || sources[0];
-    if (!src || src.thumbnail.isEmpty()) { send('toast', 'Não consegui tirar o print da tela.'); return; }
+    if (!src || src.thumbnail.isEmpty()) { notify('Não consegui tirar o print da tela.'); return; }
     // Deixa o print também na área de transferência (API nova do Electron, com a antiga de reserva).
     try {
       const { ClipboardItem } = require('electron');
       if (ClipboardItem) await clipboard.write([new ClipboardItem({ 'image/png': new Blob([src.thumbnail.toPNG()], { type: 'image/png' }) })]);
       else clipboard.writeImage(src.thumbnail);
     } catch {}
-    send('toast', '📷 Print tirado. Lendo o placar na janela do Claude...');
+    notify('📷 Print tirado. Lendo o placar na janela do Claude...');
     const w = openClaude({ focus: false });
     const frame = await findAppFrame(w.webContents);
-    if (!frame) { send('toast', 'Print copiado. Abra a janela do Claude (Ctrl+Shift+W), faça login se pedir, e cole com Ctrl+V em Partidas.'); return; }
+    if (!frame) { notify('Print copiado. Abra a janela do Claude (Ctrl+Shift+W), faça login se pedir, e cole com Ctrl+V em Partidas.'); return; }
     const dataUrl = 'data:image/jpeg;base64,' + src.thumbnail.toJPEG(92).toString('base64');
     await frame.executeJavaScript(`window.gcPasteScore(${JSON.stringify(dataUrl)})`);
-    send('toast', 'Placar enviado. Confira os números na janela do Claude (Ctrl+Shift+W) e aperte Registrar partida.');
+    notify('Placar enviado. Confira os números na janela do Claude (Ctrl+Shift+W) e aperte Registrar partida.');
   } catch {
-    send('toast', 'Não consegui enviar o print. Ele ficou copiado: cole com Ctrl+V em Partidas.');
+    notify('Não consegui enviar o print. Ele ficou copiado: cole com Ctrl+V em Partidas.');
   } finally { shotBusy = false; }
 }
 
@@ -435,7 +445,7 @@ function registerMatch(game, m, { toast = true } = {}) {
   store.state.pendingMatches = [...(store.state.pendingMatches || []), { game, ...m }];
   store.save();
   const nums = m.k == null ? '' : m.a == null ? `, ${m.k} abates e ${m.d} mortes` : `, ${m.k}/${m.a}/${m.d}`;
-  if (toast) send('toast', `🏁 Partida registrada: ${RES[m.res] || 'sem resultado'}${nums}. ${m.note.split(' (')[0]}`);
+  if (toast) notify(`🏁 Partida registrada: ${RES[m.res] || 'sem resultado'}${nums}. ${m.note.split(' (')[0]}`);
   deliverPending();
 }
 // Manda as partidas guardadas para a página do Claude (onde ficam o histórico e as análises).
@@ -636,9 +646,9 @@ function minecraftLive(id) {
     for (const l of lines) {
       const e = log.line(l);
       if (!e) continue;
-      if (e.type === 'death') send('toast', `💀 Você morreu: ${e.cause} (${e.count}ª morte da sessão)`);
-      if (e.type === 'advancement') send('toast', `🏆 Conquista: ${e.name}`);
-      if (e.type === 'catch') send('toast', `🎉 Capturou ${e.name}! (${e.count} na sessão)`);
+      if (e.type === 'death') notify(`💀 Você morreu: ${e.cause} (${e.count}ª morte da sessão)`);
+      if (e.type === 'advancement') notify(`🏆 Conquista: ${e.name}`);
+      if (e.type === 'catch') notify(`🎉 Capturou ${e.name}! (${e.count} na sessão)`);
     }
     sendLive();
   }
@@ -696,7 +706,7 @@ function tf2Live(id) {
         const e = con.line(l);
         if (!seen) { seen = true; msg = ''; }
         if (!e) continue;
-        if (e.type === 'kill') { sess.k++; sess.best = Math.max(sess.best, e.streak); if (e.streak % 5 === 0) send('toast', `🔥 Sequência de ${e.streak} abates!`); }
+        if (e.type === 'kill') { sess.k++; sess.best = Math.max(sess.best, e.streak); if (e.streak % 5 === 0) notify(`🔥 Sequência de ${e.streak} abates!`); }
         if (e.type === 'death') sess.d++;
         if (e.type === 'map' && e.previous) registerMatch('tf2', e.previous);
       }
@@ -742,7 +752,7 @@ function stardewLive(id) {
     cur = info;
     if (diff && diff.newDay) {
       days++; ups.push(...diff.ups);
-      send('toast', `🌙 Dia salvo: ${diff.money >= 0 ? '+' : ''}${money(diff.money)} g.${diff.ups.length ? ` Subiu: ${diff.ups.join(', ')}.` : ''} Agora: ${stardew.dateLabel(info)}.`);
+      notify(`🌙 Dia salvo: ${diff.money >= 0 ? '+' : ''}${money(diff.money)} g.${diff.ups.length ? ` Subiu: ${diff.ups.join(', ')}.` : ''} Agora: ${stardew.dateLabel(info)}.`);
     }
     sendLive();
   }
@@ -770,6 +780,79 @@ function stardewLive(id) {
       return { highlights: h, diary: diaryNote(`Sessão de ${minutes(ms)}: ${h.join('; ')}`) };
     },
   };
+}
+
+// ---------- Avisos no canto da tela ----------
+let toastWin = null;
+function toastWindow() {
+  if (toastWin && !toastWin.isDestroyed()) return toastWin;
+  const { workArea } = screen.getPrimaryDisplay();
+  const W = 380, H = 260;
+  toastWin = new BrowserWindow({
+    width: W, height: H, x: workArea.x + workArea.width - W - 12, y: workArea.y + workArea.height - H - 12,
+    frame: false, transparent: true, resizable: false, skipTaskbar: true, alwaysOnTop: true, focusable: false, show: false,
+    webPreferences: { preload: path.join(__dirname, 'preload.js') },
+  });
+  toastWin.setAlwaysOnTop(true, 'screen-saver');
+  toastWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  toastWin.setIgnoreMouseEvents(true);
+  toastWin.loadFile(path.join(__dirname, 'renderer', 'toast.html'));
+  return toastWin;
+}
+function notify(text) {
+  const panelOpen = win && !win.isDestroyed() && win.isVisible() && !compact;
+  if (panelOpen || (store.state.settings && store.state.settings.cornerToasts === false)) return send('toast', text);
+  const t = toastWindow();
+  const show = () => {
+    t.webContents.send('toast', text);
+    t.showInactive();
+    clearTimeout(t.hideTimer); t.hideTimer = setTimeout(() => { if (!t.isDestroyed()) t.hide(); }, 7000);
+  };
+  if (t.webContents.isLoading()) t.webContents.once('did-finish-load', show); else show();
+}
+
+// ---------- Capa do jogo (arte da Steam) ----------
+const coverCache = {};
+function steamAppIdFor(g) {
+  if (!g) return null;
+  if (g.steamAppId || g.appId) return g.steamAppId || g.appId;
+  const norm = (t) => String(t).toLowerCase().replace(/[^a-z0-9]/g, '');
+  const hit = library.find((l) => l.appId && norm(l.name) === norm(g.name));
+  return hit ? hit.appId : null;
+}
+// Procura a arte que a Steam já guardou no PC; se não tiver, baixa da loja e guarda.
+async function coverFor(g) {
+  const appId = steamAppIdFor(g);
+  if (!appId) return null;
+  if (appId in coverCache) return coverCache[appId];
+  let buf = null;
+  const libs = await steamLibraries();
+  const cache = libs[0] ? path.join(libs[0], 'appcache', 'librarycache') : null;
+  if (cache) {
+    const names = ['library_hero.jpg', 'header.jpg'];
+    const direct = names.flatMap((n) => [path.join(cache, `${appId}_${n}`), path.join(cache, String(appId), n)]);
+    const nested = subdirs(path.join(cache, String(appId))).flatMap((d) => names.map((n) => path.join(d, n)));
+    const file = [...direct, ...nested].find((f) => mtime(f));
+    if (file) buf = fs.readFileSync(file);
+  }
+  const saved = path.join(app.getPath('userData'), 'covers', `${appId}.jpg`);
+  if (!buf && mtime(saved)) buf = fs.readFileSync(saved);
+  if (!buf) {
+    for (const n of ['library_hero.jpg', 'header.jpg']) {
+      try {
+        const r = await net.fetch(`https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/${n}`);
+        if (!r.ok) continue;
+        buf = Buffer.from(await r.arrayBuffer());
+        fs.mkdirSync(path.dirname(saved), { recursive: true }); fs.writeFileSync(saved, buf);
+        break;
+      } catch {}
+    }
+  }
+  if (!buf) return (coverCache[appId] = null);
+  // Reduz para não pesar no painel.
+  const img = nativeImage.createFromBuffer(buf);
+  const small = img.isEmpty() ? null : img.getSize().width > 760 ? img.resize({ width: 760, quality: 'good' }) : img;
+  return (coverCache[appId] = small ? `data:image/jpeg;base64,${small.toJPEG(82).toString('base64')}` : null);
 }
 
 // ---------- Ícone perto do relógio ----------
@@ -808,7 +891,24 @@ function registerShortcuts() {
 }
 
 function registerIpc() {
-  ipcMain.handle('get-state', () => ({ games, currentGame, state: store.state, mode: { clickThrough, compact }, cs2: cs2.state, cs2Status, live: liveCard }));
+  ipcMain.handle('get-state', () => ({ games, currentGame, state: store.state, mode: { clickThrough, compact }, cs2: cs2.state, cs2Status, live: liveCard, settings: store.state.settings, version: app.getVersion() }));
+  ipcMain.handle('cover', (_e, g) => coverFor(g).catch(() => null));
+  ipcMain.handle('set-setting', (_e, key, value) => {
+    if (!['opacity', 'size', 'cornerToasts', 'sound'].includes(key)) return;
+    store.state.settings = { ...store.state.settings, [key]: value };
+    store.save();
+    if (key === 'size') { win.webContents.setZoomFactor(zoom()); setCompact(compact); }
+  });
+  // Encaixa o painel num canto da tela onde ele está.
+  ipcMain.handle('snap', (_e, corner) => {
+    const b = win.getBounds(), wa = screen.getDisplayMatching(b).workArea, m = 20;
+    const x = corner.endsWith('l') ? wa.x + m : wa.x + wa.width - b.width - m;
+    const y = corner.startsWith('t') ? wa.y + m : wa.y + wa.height - b.height - m;
+    win.setPosition(Math.round(x), Math.round(y));
+  });
+  ipcMain.handle('get-autostart', () => startsWithWindows());
+  ipcMain.handle('set-autostart', (_e, on) => { app.setLoginItemSettings({ openAtLogin: Boolean(on), path: loginExe(), args: ['--hidden'] }); buildTrayMenu(); return startsWithWindows(); });
+  ipcMain.handle('check-update', async () => { const u = await checkLatest(UPDATE_REPO, app.getVersion()); if (u) send('update', u); return u; });
   ipcMain.handle('rate-session', (_e, start, rating, note) => { store.rateSession(start, rating, note); store.save(); });
   ipcMain.handle('quit', () => app.quit());
   // "Não é um jogo": esse programa não é mais reconhecido sozinho.

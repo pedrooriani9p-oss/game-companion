@@ -75,6 +75,7 @@ const DEFAULT_STATE = {
   cs2Matches: [],   // partidas do CS2 registradas pelo modo ao vivo
   ignoredExe: [],   // programas marcados como "não é um jogo"
   pendingMatches: [], // partidas ainda não enviadas para a janela do Claude
+  settings: { opacity: 90, size: 'normal', cornerToasts: true, sound: true },
   reminders: [
     { id: 'agua', label: 'Beber água', everyMin: 30, enabled: true },
     { id: 'postura', label: 'Pausa e alongar', everyMin: 60, enabled: true }
