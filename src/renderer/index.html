@@ -17,12 +17,12 @@
         <button id="btn-shot" title="Print do placar para o Claude ler (Ctrl+Shift+P)">📷</button>
         <button id="btn-web" title="Abrir o Claude: perguntas, partidas, imagens (Ctrl+Shift+W)">🤖</button>
         <button id="btn-compact" title="Modo compacto (Ctrl+Shift+M)">▭</button>
-        <button id="btn-hide" title="Esconder (Ctrl+Shift+G)">✕</button>
+        <button id="btn-hide" title="Esconder (Ctrl+Shift+G). O app continua no ícone perto do relógio.">✕</button>
       </div>
     </header>
 
     <div id="compact-bar" class="drag">
-      <span id="c-game"></span><span id="c-session"></span><span id="c-fps"></span><span id="c-perf"></span><span id="c-timer"></span>
+      <span id="c-game"></span><span id="c-session"></span><span id="c-cs2"></span><span id="c-fps"></span><span id="c-perf"></span><span id="c-timer"></span>
       <button id="btn-expand" class="no-drag" title="Expandir">▢</button>
     </div>
 
@@ -40,6 +40,21 @@
         <label class="row">Jogo:
           <select id="game-select"><option value="">Automático</option></select>
         </label>
+        <div id="auto-note" class="card note" hidden>
+          <span>Reconhecido automaticamente. Para dicas e um guia deste jogo, toque em 🤖.</span>
+          <button id="btn-not-game" class="link" title="Este programa não será mais reconhecido como jogo">Não é um jogo</button>
+        </div>
+        <div id="cs2-card" class="card cs2" hidden>
+          <div class="cs2-head"><b id="cs2-map">CS2 ao vivo</b><span id="cs2-round" class="muted"></span></div>
+          <div id="cs2-live" hidden>
+            <div class="cs2-score"><span id="cs2-ct-box" class="ct">CT <b id="cs2-ct">0</b></span><span class="muted">x</span><span id="cs2-t-box" class="t"><b id="cs2-t">0</b> T</span></div>
+            <div class="cs2-stats"><span>K/A/D <b id="cs2-kad">–</b></span><span>$ <b id="cs2-money">–</b></span><span>❤ <b id="cs2-hp">–</b></span></div>
+            <div id="cs2-watch" class="muted small" hidden>Você morreu: os números acima são os seus na partida.</div>
+            <p id="cs2-tip" class="cs2-tip"></p>
+          </div>
+          <div id="cs2-msg" class="muted small"></div>
+          <div id="cs2-last" class="small"></div>
+        </div>
         <div class="card tip-card">
           <div class="muted small">Dica do momento</div>
           <p id="tip">Abra um jogo para ver dicas.</p>
@@ -63,6 +78,11 @@
         <div class="small muted" id="temps"></div>
         <canvas id="spark" width="340" height="70"></canvas>
         <div class="small muted legend"><i class="dot cpu"></i>CPU <i class="dot gpu"></i>GPU (últimos 2 min)</div>
+        <h3>FPS por sessão <span id="fps-hist-game" class="muted"></span></h3>
+        <canvas id="fps-hist" width="340" height="90"></canvas>
+        <div id="fps-hist-info" class="small muted"></div>
+        <h3>Sessões recentes</h3>
+        <table id="sessions"></table>
         <h3>Tempo de jogo</h3>
         <table id="playtime"></table>
       </section>
@@ -93,6 +113,22 @@
         </form>
       </section>
     </main>
+    <div id="summary" class="overlay" hidden>
+      <div class="sheet">
+        <div class="muted small">Sessão encerrada</div>
+        <h2 id="sum-name"></h2>
+        <div class="sum-grid">
+          <div><b id="sum-time">–</b><span>tempo</span></div>
+          <div><b id="sum-fps">–</b><span>FPS médio</span></div>
+          <div><b id="sum-low">–</b><span>FPS mais baixo</span></div>
+        </div>
+        <div id="sum-compare" class="muted small"></div>
+        <div class="muted small">Como foi a sessão?</div>
+        <div class="rate"><button data-rate="good">👍 Boa</button><button data-rate="ok">😐 Ok</button><button data-rate="bad">👎 Ruim</button></div>
+        <input id="sum-note" placeholder="Comentário (opcional): o que travou, o que deu certo">
+        <div class="row end"><button id="sum-close" class="link">Fechar</button></div>
+      </div>
+    </div>
     <footer class="muted small">Ctrl+Shift+G mostrar/esconder · Ctrl+Shift+X atravessar cliques · Ctrl+Shift+M compacto · Ctrl+Shift+W Claude · Ctrl+Shift+P print do placar · <button id="btn-browser" class="link">abrir no navegador</button></footer>
   </div>
   <script src="app.js"></script>

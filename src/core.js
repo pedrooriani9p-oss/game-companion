@@ -71,7 +71,10 @@ const DEFAULT_STATE = {
   notes: {},        // { gameId: "texto" }
   playtime: {},     // { gameId: segundos }
   names: {},        // { gameId: nome }, para jogos da Steam fora da lista
-  sessions: [],     // [{ gameId, start, end }]
+  sessions: [],     // [{ gameId, start, end, fpsAvg?, fpsLow?, rating?, note? }]
+  cs2Matches: [],   // partidas do CS2 registradas pelo modo ao vivo
+  ignoredExe: [],   // programas marcados como "não é um jogo"
+  pendingMatches: [], // partidas ainda não enviadas para a janela do Claude
   reminders: [
     { id: 'agua', label: 'Beber água', everyMin: 30, enabled: true },
     { id: 'postura', label: 'Pausa e alongar', everyMin: 60, enabled: true }
@@ -97,10 +100,19 @@ class Store {
   startSession(gameId, now = Date.now()) {
     this.state.sessions.push({ gameId, start: now, end: null });
   }
-  endSession(now = Date.now()) {
+  // extra: dados do fim da sessão (FPS médio, FPS mais baixo). Retorna a sessão encerrada.
+  endSession(now = Date.now(), extra = {}) {
     const s = this.state.sessions[this.state.sessions.length - 1];
-    if (s && s.end === null) s.end = now;
+    let ended = null;
+    if (s && s.end === null) { s.end = now; Object.assign(s, extra); ended = s; }
     this.state.sessions = this.state.sessions.slice(-200);
+    return ended;
+  }
+  // Nota que o Pedro dá para a sessão no resumo (bom, ok, ruim) e um comentário opcional.
+  rateSession(start, rating, note = '') {
+    const s = this.state.sessions.find((x) => x.start === start);
+    if (s) { s.rating = rating; if (note) s.note = String(note).slice(0, 300); }
+    return Boolean(s);
   }
 }
 

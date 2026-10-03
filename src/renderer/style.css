@@ -1,3 +1,4 @@
+[hidden] { display: none !important; }
 :root {
   --bg: rgba(16, 18, 24, 0.88); --fg: #e8eaf0; --muted: #8b90a0; --accent: #5ad1a0;
   --accent2: #6aa8ff; --card: rgba(255,255,255,0.06); --warn: #ffb454; --danger: #ff6b6b;
@@ -48,3 +49,27 @@ body.clickthrough #panel { border-color: var(--accent); opacity: .8; }
 .fps-row b { font-size: 22px; font-variant-numeric: tabular-nums; }
 #update { margin: 0 12px 6px; padding: 8px 10px; border-radius: 8px; background: #2c4a7a; color: #fff; font-weight: 600; cursor: pointer; }
 footer .link { font-size: inherit; padding: 0; }
+
+.note { display: flex; gap: 8px; align-items: center; justify-content: space-between; font-size: 12px; }
+.note .link { white-space: nowrap; font-size: 11px; }
+.cs2 { border: 1px solid rgba(255,180,84,0.35); }
+.cs2-head { display: flex; justify-content: space-between; align-items: baseline; }
+.cs2-score { display: flex; justify-content: center; align-items: baseline; gap: 12px; font-size: 15px; margin: 6px 0 2px; }
+.cs2-score b { font-size: 24px; font-variant-numeric: tabular-nums; }
+.cs2-score .ct { color: #8fb8ff; } .cs2-score .t { color: #ffc776; }
+.cs2-score .mine { text-decoration: underline; text-underline-offset: 4px; }
+.cs2-stats { display: flex; justify-content: space-around; margin: 4px 0; font-variant-numeric: tabular-nums; }
+.cs2-tip { margin: 6px 0 2px; font-size: 12px; }
+#cs2-last div { color: var(--muted); }
+.tiny { font-size: 10px; }
+.overlay { position: absolute; inset: 0; background: rgba(8,10,14,0.72); border-radius: 12px; display: flex; align-items: center; justify-content: center; padding: 16px; z-index: 5; }
+.overlay[hidden] { display: none; }
+.sheet { background: #1b1f29; border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; padding: 12px 14px; width: 100%; }
+.sheet h2 { font-size: 16px; margin: 0 0 8px; }
+.sheet input { width: 100%; margin-top: 8px; }
+.sum-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; text-align: center; }
+.sum-grid div { background: var(--card); border-radius: 8px; padding: 6px 4px; display: flex; flex-direction: column; }
+.sum-grid b { font-size: 18px; font-variant-numeric: tabular-nums; } .sum-grid span { font-size: 10px; color: var(--muted); }
+.rate { display: flex; gap: 6px; } .rate button { flex: 1; padding: 6px; }
+.row.end { justify-content: flex-end; }
+#panel { position: relative; }

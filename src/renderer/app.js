@@ -9,6 +9,7 @@ const fmt = (totalSeconds) => {
 };
 
 const escapeHtml = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const fmtPlay = (sec) => (sec >= 3600 ? `${Math.floor(sec / 3600)} h ${Math.floor((sec % 3600) / 60)} min` : `${Math.max(1, Math.floor(sec / 60))} min`);
 
 let games = [];
 let game = null;
@@ -25,7 +26,7 @@ const stopwatch = { running: false, start: 0, acc: 0 };
 $$('.tabs button').forEach((b) => b.addEventListener('click', () => {
   $$('.tabs button').forEach((x) => x.classList.toggle('active', x === b));
   $$('.tab').forEach((t) => t.classList.toggle('active', t.id === `tab-${b.dataset.tab}`));
-  if (b.dataset.tab === 'desempenho') renderPlaytime();
+  if (b.dataset.tab === 'desempenho') refreshState();
 }));
 
 $('#btn-hide').onclick = () => window.api.hide();
@@ -33,6 +34,7 @@ $('#btn-web').onclick = () => window.api.openWeb();
 $('#btn-shot').onclick = () => window.api.captureScore();
 $('#btn-browser').onclick = () => window.api.openWebExternal();
 $('#btn-fps-admin').onclick = () => { window.api.fpsAdmin(); $('#btn-fps-admin').hidden = true; };
+$('#btn-not-game').onclick = () => window.api.ignoreGame();
 
 // Avisos curtos vindos do processo principal (print do placar).
 window.api.onToast((text) => {
@@ -72,6 +74,8 @@ function setGame(g) {
   sessionStart = g ? Date.now() : null;
   tipIndex = 0;
   $('#game-name').textContent = g ? g.name : 'Nenhum jogo detectado';
+  $('#auto-note').hidden = !(g && g.auto);
+  renderCs2();
   $('#notes').value = g ? state.notes[g.id] || '' : '';
   $('#notes').disabled = !g;
   renderTip();
@@ -85,12 +89,12 @@ function setGame(g) {
 }
 
 function renderTip() {
-  $('#tip').textContent = game && game.tips.length
-    ? game.tips[tipIndex % game.tips.length]
-    : 'Abra um jogo da lista (ou escolha acima) para ver dicas.';
+  $('#tip').textContent = !game ? 'Abra qualquer jogo para ver dicas aqui.'
+    : game.tips.length ? game.tips[tipIndex % game.tips.length]
+      : `Toque em 🤖 e peça ao Claude dicas e um guia de ${game.name}.`;
 }
 $('#btn-next-tip').onclick = () => { tipIndex++; renderTip(); };
-setInterval(() => { if (game) { tipIndex++; renderTip(); } }, 90 * 1000);
+setInterval(() => { if (game) { tipIndex++; renderTip(); } if (cs2State) { cs2Tip++; renderCs2(); } }, 90 * 1000);
 
 $('#game-select').onchange = (e) => window.api.setGame(e.target.value || null);
 window.api.onGameChanged(setGame);
@@ -152,16 +156,136 @@ function drawSpark() {
   });
 }
 
-async function renderPlaytime() {
+// Lê o estado salvo de novo (sessões, tempo, partidas). Os lembretes ficam os da tela, que podem ter sido editados.
+async function refreshState() {
+  const reminders = state.reminders;
   ({ state } = await window.api.getState());
+  state.reminders = reminders;
+  renderPlaytime(); renderFpsHistory(); renderSessions(); renderCs2();
+}
+
+const nameOf = (id) => (games.find((g) => g.id === id) || {}).name || state.names[id] || id;
+
+function renderPlaytime() {
   const rows = Object.entries(state.playtime).sort((a, b) => b[1] - a[1]);
   $('#playtime').innerHTML = rows.length
     ? rows.map(([id, sec]) => {
-      const name = (games.find((g) => g.id === id) || {}).name || state.names[id] || id;
-      return `<tr><td>${escapeHtml(name)}</td><td>${sec >= 3600 ? `${Math.floor(sec / 3600)} h ${Math.floor((sec % 3600) / 60)} min` : `${Math.floor(sec / 60)} min`}</td></tr>`;
+      return `<tr><td>${escapeHtml(nameOf(id))}</td><td>${fmtPlay(sec)}</td></tr>`;
     }).join('')
     : '<tr><td class="muted">Ainda sem registros.</td><td></td></tr>';
 }
+
+// FPS médio de cada sessão do jogo atual (ou do último jogo com FPS medido).
+function renderFpsHistory() {
+  const lastWithFps = [...state.sessions].reverse().find((x) => x.fpsAvg != null);
+  const id = game ? game.id : lastWithFps && lastWithFps.gameId;
+  const list = id ? state.sessions.filter((x) => x.gameId === id && x.end && x.fpsAvg != null).slice(-12) : [];
+  $('#fps-hist-game').textContent = id ? `· ${nameOf(id)}` : '';
+  const c = $('#fps-hist'), ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, c.width, c.height);
+  if (!list.length) {
+    $('#fps-hist-info').textContent = 'Cada sessão com o FPS ligado vira uma barra aqui, para comparar os dias.';
+    return;
+  }
+  const max = Math.max(60, ...list.map((x) => x.fpsAvg));
+  const slot = c.width / 12, top = 14, h = c.height - top - 4, bw = slot - 8;
+  ctx.font = '10px "Segoe UI", sans-serif'; ctx.textAlign = 'center';
+  list.forEach((x, i) => {
+    const left = i * slot + 4, bh = Math.max(2, (x.fpsAvg / max) * h), y = c.height - 4 - bh;
+    ctx.fillStyle = x.fpsAvg >= 60 ? '#5ad1a0' : x.fpsAvg >= 30 ? '#ffb454' : '#ff6b6b';
+    ctx.fillRect(left, y, bw, bh);
+    if (x.fpsLow != null) { ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(left, c.height - 4 - (x.fpsLow / max) * h, bw, 2); }
+    ctx.fillStyle = '#e8eaf0'; ctx.fillText(String(x.fpsAvg), left + bw / 2, y - 3);
+  });
+  const vals = list.map((x) => x.fpsAvg);
+  const avg = Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+  $('#fps-hist-info').textContent = `Média ${avg} · melhor ${Math.max(...vals)} · pior ${Math.min(...vals)} nas últimas ${vals.length} sessões. A faixa escura é o FPS mais baixo.`;
+}
+
+const RATE = { good: '👍', ok: '😐', bad: '👎' };
+function renderSessions() {
+  const list = state.sessions.filter((x) => x.end && x.end - x.start >= 60000).slice(-6).reverse();
+  $('#sessions').innerHTML = list.length ? list.map((x) => {
+    const d = new Date(x.start);
+    const when = `${d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+    return `<tr><td>${escapeHtml(nameOf(x.gameId))}<div class="muted tiny">${when}</div></td>`
+      + `<td>${fmtPlay((x.end - x.start) / 1000)}${x.fpsAvg != null ? ` · ${x.fpsAvg} FPS` : ''} ${RATE[x.rating] || ''}</td></tr>`;
+  }).join('') : '<tr><td class="muted">As sessões aparecem aqui quando você fecha um jogo.</td><td></td></tr>';
+}
+
+// ---------- Resumo ao fechar o jogo ----------
+let summary = null;
+window.api.onSessionSummary(async (s) => {
+  summary = s;
+  if (document.body.classList.contains('compact')) window.api.setCompact(false);
+  await refreshState();
+  $('#sum-name').textContent = s.name;
+  $('#sum-time').textContent = fmtPlay((s.end - s.start) / 1000);
+  $('#sum-fps').textContent = s.fpsAvg ?? '–';
+  $('#sum-low').textContent = s.fpsLow ?? '–';
+  const prev = state.sessions.filter((x) => x.gameId === s.gameId && x.start !== s.start && x.fpsAvg != null);
+  let compare = 'O FPS não foi medido nesta sessão.';
+  if (s.fpsAvg != null && prev.length) {
+    const avg = Math.round(prev.reduce((a, x) => a + x.fpsAvg, 0) / prev.length), diff = s.fpsAvg - avg;
+    compare = diff === 0 ? `FPS igual à sua média neste jogo (${avg}).` : `${Math.abs(diff)} FPS ${diff > 0 ? 'acima' : 'abaixo'} da sua média neste jogo (${avg}).`;
+  } else if (s.fpsAvg != null) compare = 'Primeira sessão com FPS medido neste jogo.';
+  $('#sum-compare').textContent = compare;
+  $('#sum-note').value = '';
+  $('#summary').hidden = false;
+});
+function closeSummary() { $('#summary').hidden = true; summary = null; setTimeout(refreshState, 300); }
+$$('[data-rate]').forEach((b) => b.onclick = () => {
+  if (summary) window.api.rateSession(summary.start, b.dataset.rate, $('#sum-note').value.trim());
+  closeSummary();
+});
+$('#sum-close').onclick = () => {
+  const note = $('#sum-note').value.trim();
+  if (summary && note) window.api.rateSession(summary.start, null, note);
+  closeSummary();
+};
+
+// ---------- CS2 ao vivo ----------
+let cs2State = null;
+let cs2Status = 'off';
+let cs2Tip = 0;
+const CS2_MSG = {
+  'installed-restart': 'Modo ao vivo pronto. Feche e abra o CS2 uma vez para ele começar a mandar os dados.',
+  installed: 'Modo ao vivo pronto. Entre numa partida para ver mapa, placar e K/A/D aqui.',
+  live: 'Aguardando dados do CS2. Entre numa partida.',
+  'not-found': 'Não achei a pasta do CS2 na Steam. O modo ao vivo liga sozinho quando ela existir.',
+  error: 'Não consegui gravar a configuração na pasta do CS2. Abra o app como administrador uma vez.',
+  'port-busy': 'Outro programa está usando a porta 3971, então o modo ao vivo ficou desligado.',
+};
+const RES_SHORT = { V: 'Vitória', D: 'Derrota', E: 'Empate' };
+function renderCs2() {
+  const show = Boolean(cs2State) || Boolean(game && game.id === 'cs2');
+  $('#cs2-card').hidden = !show;
+  const s = cs2State;
+  $('#c-cs2').textContent = s ? `${s.mapLabel} ${s.ctScore}-${s.tScore}${s.kills != null ? ` · ${s.kills}/${s.assists}/${s.deaths}` : ''}` : '';
+  if (!show) return;
+  $('#cs2-live').hidden = !s;
+  $('#cs2-msg').textContent = s ? '' : CS2_MSG[cs2Status] || 'Aguardando o CS2.';
+  $('#cs2-map').textContent = s ? `CS2 ao vivo · ${s.mapLabel}` : 'CS2 ao vivo';
+  if (s) {
+    $('#cs2-round').textContent = s.phase === 'warmup' ? 'aquecimento' : s.phase === 'gameover' ? 'fim de jogo' : s.round != null ? `rodada ${s.round + 1}` : '';
+    $('#cs2-ct').textContent = s.ctScore; $('#cs2-t').textContent = s.tScore;
+    $('#cs2-ct-box').classList.toggle('mine', s.team === 'CT'); $('#cs2-t-box').classList.toggle('mine', s.team === 'T');
+    $('#cs2-kad').textContent = s.kills != null ? `${s.kills}/${s.assists}/${s.deaths}` : '–';
+    $('#cs2-money').textContent = s.money != null ? Number(s.money).toLocaleString('pt-BR') : '–';
+    $('#cs2-hp').textContent = s.health ?? '–';
+    $('#cs2-watch').hidden = !s.watching;
+    $('#cs2-tip').textContent = s.tips.length ? `💡 ${s.tips[cs2Tip % s.tips.length]}` : '';
+  } else $('#cs2-round').textContent = '';
+  const last = (state.cs2Matches || []).slice(-3).reverse();
+  $('#cs2-last').innerHTML = last.length ? '<div>Últimas partidas registradas:</div>' + last.map((m) =>
+    `<div>${escapeHtml(`${RES_SHORT[m.res] || 'Sem resultado'}${m.k != null ? `, ${m.k}/${m.a}/${m.d}` : ''}, ${m.note.split(' (')[0]}`)}</div>`).join('') : '';
+}
+window.api.onCs2((s) => {
+  if (s && (!cs2State || cs2State.map !== s.map)) cs2Tip = 0;
+  cs2State = s; renderCs2();
+});
+window.api.onCs2Status((st) => { cs2Status = st; renderCs2(); });
+window.api.onCs2Match(() => refreshState());
 
 // ---------- Timers e lembretes ----------
 function alertUser(text) {
@@ -273,15 +397,15 @@ function tick() {
 // ---------- Início ----------
 (async () => {
   const init = await window.api.getState();
-  games = init.games; state = init.state;
+  games = init.games; state = init.state; cs2State = init.cs2; cs2Status = init.cs2Status;
   games.forEach((g) => $('#game-select').add(new Option(g.name, g.id)));
   applyMode(init.mode);
   setGame(init.currentGame);
   renderReminders();
-  renderPlaytime();
+  renderPlaytime(); renderFpsHistory(); renderSessions(); renderCs2();
   refreshStats();
   setInterval(tick, 1000);
   setInterval(refreshStats, 2000);
   setInterval(refreshFps, 1000);
-  setInterval(renderPlaytime, 30000);
+  setInterval(refreshState, 30000);
 })();
