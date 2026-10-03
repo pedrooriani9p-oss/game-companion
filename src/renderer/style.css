@@ -11,22 +11,27 @@
 html, body { margin: 0; background: transparent; color: var(--fg); font: 13px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; overflow: hidden; user-select: none; }
 svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: 0 0 auto; }
 #panel { position: relative; background: var(--bg); border: 1px solid var(--border); border-radius: 14px; height: 100vh; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.45); }
+/* Áreas de arrastar nunca ficam por baixo de botões: no Windows o sistema decide o clique
+   antes da página, e um botão dentro de uma área de arrastar pode parar de receber cliques. */
 .drag { -webkit-app-region: drag; } .no-drag, button, input, select, textarea, label { -webkit-app-region: no-drag; }
+body:has(.overlay:not([hidden])) .drag { -webkit-app-region: no-drag; }
 .muted { color: var(--muted); } .small { font-size: 11px; margin: 6px 0 2px; }
 
 /* ---------- Capa do jogo ---------- */
-#hero { position: relative; height: 116px; flex: 0 0 auto; padding: 10px 12px; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; }
+#hero { position: relative; height: 116px; flex: 0 0 auto; display: flex; flex-direction: column; overflow: hidden; }
 #hero-art { position: absolute; inset: 0; background: radial-gradient(120% 140% at 85% 0%, hsla(var(--hue), 70%, 45%, 0.55), transparent 60%), linear-gradient(135deg, hsla(var(--hue), 45%, 22%, 0.9), rgba(14,16,22,0.2)); background-size: cover; background-position: center 30%; transition: opacity .4s; }
 #hero-art.cover { background-size: cover; }
 #hero::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(10,12,17,0.25) 0%, rgba(10,12,17,0.35) 45%, var(--bg) 100%); pointer-events: none; }
 #hero-mark { position: absolute; right: 10px; bottom: -14px; font-size: 76px; font-weight: 800; letter-spacing: -2px; color: rgba(255,255,255,0.07); line-height: 1; pointer-events: none; }
 .hero-top, .hero-bottom { position: relative; z-index: 1; }
-.hero-top { display: flex; justify-content: space-between; align-items: center; }
-.brand { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; letter-spacing: .3px; color: rgba(255,255,255,0.75); text-transform: uppercase; }
+.hero-top { display: flex; align-items: center; height: 44px; padding-right: 12px; flex: 0 0 auto; }
+.hero-bottom { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; padding: 0 12px 10px; }
+.brand { flex: 1 1 auto; align-self: stretch; padding-left: 12px; display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; letter-spacing: .3px; color: rgba(255,255,255,0.75); text-transform: uppercase; }
 .brand-dot { width: 8px; height: 8px; border-radius: 3px; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
-.actions { display: flex; gap: 6px; }
-.icon-btn { width: 30px; height: 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 9px; border: 1px solid rgba(255,255,255,0.12); background: rgba(8,10,14,0.45); color: var(--fg); cursor: pointer; backdrop-filter: blur(6px); transition: background .15s, border-color .15s, transform .1s; }
-.icon-btn:hover { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.25); } .icon-btn:active { transform: scale(.94); }
+.actions { display: flex; gap: 6px; flex: 0 0 auto; }
+.icon-btn { width: 30px; height: 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 9px; border: 1px solid rgba(255,255,255,0.12); background: rgba(8,10,14,0.6); color: var(--fg); cursor: pointer; transition: background .15s, border-color .15s; }
+.icon-btn:hover { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.25); } .icon-btn:active { background: rgba(255,255,255,0.22); }
+.icon-btn svg { pointer-events: none; }
 #btn-hide:hover { background: rgba(255,107,107,0.25); border-color: rgba(255,107,107,0.5); }
 #game-name { font-size: 18px; font-weight: 700; letter-spacing: -.2px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 8px rgba(0,0,0,0.6); }
 .hero-meta { display: flex; align-items: center; gap: 8px; font-size: 12px; color: rgba(255,255,255,0.78); font-variant-numeric: tabular-nums; }
@@ -146,7 +151,8 @@ kbd { display: inline-block; font: 600 10.5px "Segoe UI", sans-serif; padding: 1
 .update:hover { filter: brightness(1.1); }
 
 /* ---------- Modo compacto ---------- */
-#compact-bar { display: none; align-items: center; gap: 10px; padding: 0 10px 0 14px; height: 100%; font-variant-numeric: tabular-nums; font-size: 12.5px; }
+#compact-bar { display: none; align-items: center; gap: 8px; padding-right: 10px; height: 100%; font-variant-numeric: tabular-nums; font-size: 12.5px; }
+#compact-bar .c-main { flex: 1 1 auto; min-width: 0; align-self: stretch; display: flex; align-items: center; gap: 10px; padding-left: 14px; }
 #compact-bar span:empty { display: none; }
 #compact-bar .pills { display: flex; gap: 6px; overflow: hidden; min-width: 0; flex: 0 1 auto; }
 #compact-bar .pills span { color: rgba(255,255,255,0.85); padding: 2px 8px; border-radius: 20px; background: var(--surface2); white-space: nowrap; flex: 0 0 auto; }

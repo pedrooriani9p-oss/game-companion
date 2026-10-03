@@ -26,11 +26,11 @@
   </svg>
 
   <div id="panel">
-    <header id="hero" class="drag">
+    <header id="hero">
       <div id="hero-art"></div>
       <div id="hero-mark"></div>
       <div class="hero-top">
-        <div class="brand"><span class="brand-dot"></span>Game Companion</div>
+        <div class="brand drag"><span class="brand-dot"></span>Game Companion</div>
         <div class="actions no-drag">
           <button id="btn-shot" class="icon-btn" title="Print do placar para o Claude ler (Ctrl+Shift+P)"><svg><use href="#i-camera"/></svg></button>
           <button id="btn-web" class="icon-btn" title="Abrir o Claude: perguntas, partidas, imagens (Ctrl+Shift+W)"><svg><use href="#i-chat"/></svg></button>
@@ -38,15 +38,17 @@
           <button id="btn-hide" class="icon-btn" title="Esconder (Ctrl+Shift+G). O app continua no ícone perto do relógio."><svg><use href="#i-x"/></svg></button>
         </div>
       </div>
-      <div class="hero-bottom">
+      <div class="hero-bottom drag">
         <div id="game-name">Nenhum jogo detectado</div>
         <div class="hero-meta"><i id="live-dot"></i><span id="session">aguardando jogo</span><span id="hero-fps"></span></div>
       </div>
     </header>
 
-    <div id="compact-bar" class="drag">
-      <i id="c-dot"></i><span id="c-game"></span>
-      <div class="pills"><span id="c-session"></span><span id="c-cs2"></span><span id="c-fps"></span><span id="c-timer"></span><span id="c-perf"></span></div>
+    <div id="compact-bar">
+      <div class="c-main drag">
+        <i id="c-dot"></i><span id="c-game"></span>
+        <div class="pills"><span id="c-session"></span><span id="c-cs2"></span><span id="c-fps"></span><span id="c-timer"></span><span id="c-perf"></span></div>
+      </div>
       <button id="btn-expand" class="icon-btn no-drag" title="Expandir"><svg><use href="#i-expand"/></svg></button>
     </div>
 
