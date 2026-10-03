@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
+  <title>Game Companion</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="panel">
+    <header class="drag">
+      <div class="title">
+        <span id="game-name">Nenhum jogo detectado</span>
+        <span id="session" class="muted">sessão 00:00</span>
+      </div>
+      <div class="actions no-drag">
+        <button id="btn-shot" title="Print do placar para o Claude ler (Ctrl+Shift+P)">📷</button>
+        <button id="btn-web" title="Abrir o Claude: perguntas, partidas, imagens (Ctrl+Shift+W)">🤖</button>
+        <button id="btn-compact" title="Modo compacto (Ctrl+Shift+M)">▭</button>
+        <button id="btn-hide" title="Esconder (Ctrl+Shift+G)">✕</button>
+      </div>
+    </header>
+
+    <div id="compact-bar" class="drag">
+      <span id="c-game"></span><span id="c-session"></span><span id="c-fps"></span><span id="c-perf"></span><span id="c-timer"></span>
+      <button id="btn-expand" class="no-drag" title="Expandir">▢</button>
+    </div>
+
+    <div id="banner" hidden></div>
+    <div id="update" hidden></div>
+
+    <nav class="tabs">
+      <button data-tab="jogo" class="active">Jogo</button>
+      <button data-tab="desempenho">Desempenho</button>
+      <button data-tab="timers">Timers</button>
+    </nav>
+
+    <main>
+      <section id="tab-jogo" class="tab active">
+        <label class="row">Jogo:
+          <select id="game-select"><option value="">Automático</option></select>
+        </label>
+        <div class="card tip-card">
+          <div class="muted small">Dica do momento</div>
+          <p id="tip">Abra um jogo para ver dicas.</p>
+          <button id="btn-next-tip" class="link">Próxima dica →</button>
+        </div>
+        <div id="guides" class="chips"></div>
+        <form id="search" class="row">
+          <input id="search-q" placeholder="Pesquisar guia (ex.: como vencer o chefe)">
+          <button>Buscar</button>
+        </form>
+        <div class="muted small">Minhas anotações</div>
+        <textarea id="notes" placeholder="Builds, senhas, onde parei..."></textarea>
+      </section>
+
+      <section id="tab-desempenho" class="tab">
+        <div class="fps-row"><span>FPS</span><b id="v-fps">–</b><span id="v-low" class="muted small"></span><button id="btn-fps-admin" class="link" hidden>Ativar FPS (pede administrador)</button></div>
+        <div class="meter"><span>CPU</span><div class="bar"><i id="m-cpu"></i></div><b id="v-cpu">–</b></div>
+        <div class="meter"><span>GPU</span><div class="bar"><i id="m-gpu"></i></div><b id="v-gpu">–</b></div>
+        <div class="meter"><span>RAM</span><div class="bar"><i id="m-ram"></i></div><b id="v-ram">–</b></div>
+        <div class="meter"><span>VRAM</span><div class="bar"><i id="m-vram"></i></div><b id="v-vram">–</b></div>
+        <div class="small muted" id="temps"></div>
+        <canvas id="spark" width="340" height="70"></canvas>
+        <div class="small muted legend"><i class="dot cpu"></i>CPU <i class="dot gpu"></i>GPU (últimos 2 min)</div>
+        <h3>Tempo de jogo</h3>
+        <table id="playtime"></table>
+      </section>
+
+      <section id="tab-timers" class="tab">
+        <div class="muted small">Cronômetro rápido</div>
+        <div class="chips">
+          <button data-min="1">1 min</button><button data-min="3">3 min</button>
+          <button data-min="5">5 min</button><button data-min="10">10 min</button>
+        </div>
+        <form id="timer-form" class="row">
+          <input id="timer-label" placeholder="Nome (ex.: respawn do Barão)">
+          <input id="timer-min" type="number" min="0.1" step="any" value="5" class="num">
+          <button>Iniciar</button>
+        </form>
+        <ul id="timers" class="list"></ul>
+
+        <div class="muted small">Cronômetro</div>
+        <div class="row"><b id="stopwatch" class="big">00:00</b>
+          <button id="sw-toggle">Iniciar</button><button id="sw-reset">Zerar</button></div>
+
+        <div class="muted small">Lembretes recorrentes</div>
+        <ul id="reminders" class="list"></ul>
+        <form id="reminder-form" class="row">
+          <input id="rem-label" placeholder="Lembrete">
+          <input id="rem-min" type="number" min="1" value="45" class="num">
+          <button>Adicionar</button>
+        </form>
+      </section>
+    </main>
+    <footer class="muted small">Ctrl+Shift+G mostrar/esconder · Ctrl+Shift+X atravessar cliques · Ctrl+Shift+M compacto · Ctrl+Shift+W Claude · Ctrl+Shift+P print do placar · <button id="btn-browser" class="link">abrir no navegador</button></footer>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>

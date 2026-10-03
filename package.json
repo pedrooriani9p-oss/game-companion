@@ -1,0 +1,49 @@
+{
+  "name": "game-companion",
+  "version": "0.2.1",
+  "description": "Overlay para ajudar durante jogos no PC: dicas, desempenho e timers.",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node test/smoke.js",
+    "dist": "electron-builder --win portable"
+  },
+  "author": "Pedro Oriani",
+  "license": "MIT",
+  "dependencies": {
+    "systeminformation": "^5.33.15"
+  },
+  "devDependencies": {
+    "electron": "^44.5.1",
+    "electron-builder": "^26.0.0",
+    "resedit": "^2.0.3"
+  },
+  "build": {
+    "appId": "com.pedro.gamecompanion",
+    "productName": "Game Companion",
+    "files": [
+      "src/**",
+      "data/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "vendor/PresentMon.exe",
+        "to": "PresentMon.exe"
+      }
+    ],
+    "afterPack": "build/afterPack.js",
+    "win": {
+      "target": "portable",
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false
+    },
+    "portable": {
+      "artifactName": "GameCompanion-${version}.exe"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/pedrooriani9p-oss/game-companion"
+  }
+}

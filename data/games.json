@@ -1,0 +1,272 @@
+[
+  {
+    "id": "r6",
+    "name": "Rainbow Six Siege",
+    "steamAppId": 359550,
+    "exe": [
+      "RainbowSix.exe",
+      "RainbowSix_Vulkan.exe",
+      "RainbowSix_BE.exe"
+    ],
+    "tips": [
+      "Use o drone antes de entrar: informação ganha a rodada.",
+      "Na defesa, reforce as paredes do objetivo logo no começo.",
+      "Não fique encostado em paredes destrutíveis: dá para atirar através delas.",
+      "Mire na altura da cabeça: headshot mata com um tiro."
+    ],
+    "guides": [
+      "https://r6.tracker.network"
+    ]
+  },
+  {
+    "id": "cobblemon",
+    "name": "Cobblemon (Minecraft)",
+    "exe": [
+      "javaw.exe"
+    ],
+    "cmdlineMatch": "cobblemon",
+    "tips": [
+      "Enfraqueça o Pokémon e cause status (sono, paralisia) antes de jogar a Poké Ball.",
+      "Plante Apricorns: são a base para fazer Poké Balls.",
+      "Os Pokémon que aparecem mudam com o bioma e o horário.",
+      "Guarde Pokémon extras no PC para não perder nenhum."
+    ],
+    "guides": [
+      "https://wiki.cobblemon.com"
+    ]
+  },
+  {
+    "id": "minecraft",
+    "name": "Minecraft",
+    "exe": [
+      "javaw.exe",
+      "Minecraft.Windows.exe"
+    ],
+    "tips": [
+      "Diamantes são mais comuns perto da camada Y -59.",
+      "Durma na cama para pular a noite e marcar o ponto de renascimento.",
+      "Leve sempre um balde de água: salva de quedas e de lava.",
+      "Use F3 para ver coordenadas e anote os lugares importantes."
+    ],
+    "guides": [
+      "https://minecraft.wiki"
+    ]
+  },
+  {
+    "id": "cs2",
+    "name": "Counter-Strike 2",
+    "steamAppId": 730,
+    "exe": [
+      "cs2.exe"
+    ],
+    "tips": [
+      "Pare de andar antes de atirar: a precisão cai muito em movimento.",
+      "Mantenha a mira na altura da cabeça (crosshair placement).",
+      "Compre em equipe: se o time está sem dinheiro, faça eco junto.",
+      "Aprenda 2 ou 3 smokes por mapa antes de aprender mais."
+    ],
+    "guides": [
+      "https://csnades.gg",
+      "https://www.hltv.org"
+    ]
+  },
+  {
+    "id": "fc26",
+    "name": "EA SPORTS FC 26",
+    "exe": [
+      "FC26.exe"
+    ],
+    "tips": [
+      "Proteja a bola com o corpo em vez de correr sempre.",
+      "Passe para o lado com espaço; não force pelo meio.",
+      "Na defesa, controle o volante e use a contenção em vez de dar carrinho."
+    ],
+    "guides": [
+      "https://www.futbin.com"
+    ]
+  },
+  {
+    "id": "tf2",
+    "name": "Team Fortress 2",
+    "steamAppId": 440,
+    "exe": [
+      "tf_win64.exe",
+      "tf.exe"
+    ],
+    "tips": [
+      "De Medic, só use o ÜberCharge quando o time estiver junto para avançar.",
+      "Encoste nos colegas suspeitos: se travar, é aliado; se passar, é Spy.",
+      "Pegue kits de vida e munição pelo caminho, mesmo sem estar no fim."
+    ],
+    "guides": [
+      "https://wiki.teamfortress.com"
+    ]
+  },
+  {
+    "id": "stardew",
+    "name": "Stardew Valley",
+    "steamAppId": 413150,
+    "exe": [
+      "Stardew Valley.exe",
+      "StardewModdingAPI.exe"
+    ],
+    "tips": [
+      "Veja a TV de manhã: previsão do tempo e sorte do dia.",
+      "Nas minas, o elevador salva a cada 5 andares.",
+      "Durma antes das 2h: desmaiar custa ouro.",
+      "Faça os pacotes do Centro Comunitário para liberar melhorias."
+    ],
+    "guides": [
+      "https://stardewvalleywiki.com"
+    ]
+  },
+  {
+    "id": "palworld",
+    "name": "Palworld",
+    "steamAppId": 1623730,
+    "exe": [
+      "Palworld-Win64-Shipping.exe"
+    ],
+    "tips": [
+      "Escolha Pals para a base pela habilidade de trabalho (mineração, lenhador, transporte).",
+      "Deixe uma caixa de comida cheia: Pals com fome trabalham menos.",
+      "Suba o nível da base para mais Pals trabalharem ao mesmo tempo.",
+      "Enfraqueça o Pal antes de jogar a esfera: aumenta a chance de captura."
+    ],
+    "guides": [
+      "https://palworld.wiki.gg"
+    ]
+  },
+  {
+    "id": "btd6",
+    "name": "Bloons TD 6",
+    "steamAppId": 960090,
+    "exe": [
+      "BloonsTD6.exe"
+    ],
+    "tips": [
+      "Coloque torres perto de curvas: mais tempo atirando nos balões.",
+      "Balões Camo exigem detecção (ex.: Ninja, ou Aldeia com radar).",
+      "Balões de chumbo (Lead) precisam de dano explosivo ou especial.",
+      "Em mapas longos, Fazendas de Banana cedo rendem muito."
+    ],
+    "guides": [
+      "https://bloons.fandom.com"
+    ]
+  },
+  {
+    "id": "division2",
+    "name": "Tom Clancy's The Division 2",
+    "exe": [
+      "TheDivision2.exe"
+    ],
+    "tips": [
+      "Fique sempre em cobertura e troque de cobertura sem se expor.",
+      "Combine habilidades: torreta para segurar e drone para dano.",
+      "Desmonte equipamentos que não usa para conseguir materiais."
+    ],
+    "guides": [
+      "https://thedivision.fandom.com"
+    ]
+  },
+  {
+    "id": "bfv",
+    "name": "Battlefield V",
+    "steamAppId": 1238810,
+    "exe": [
+      "bfv.exe"
+    ],
+    "tips": [
+      "Qualquer classe revive colegas do seu esquadrão.",
+      "Construa fortificações nos objetivos para defender melhor.",
+      "Peça munição e cura ao esquadrão pelo menu de comunicação."
+    ],
+    "guides": [
+      "https://battlefield.fandom.com"
+    ]
+  },
+  {
+    "id": "battlebit",
+    "name": "BattleBit Remastered",
+    "steamAppId": 671860,
+    "exe": [
+      "BattleBit.exe"
+    ],
+    "tips": [
+      "Renasça no líder do esquadrão para ficar perto da ação.",
+      "Atire em rajadas curtas a longa distância.",
+      "Médico revive e Suporte dá munição: combine as classes no esquadrão."
+    ],
+    "guides": []
+  },
+  {
+    "id": "bendy",
+    "name": "Bendy and the Ink Machine",
+    "steamAppId": 622650,
+    "exe": [
+      "Bendy and the Ink Machine.exe"
+    ],
+    "tips": [
+      "Escute as fitas de áudio: dão pistas da história e dos puzzles.",
+      "Quando o Ink Demon aparecer, esconda-se nas cabines Little Miracle."
+    ],
+    "guides": [
+      "https://bendy.fandom.com"
+    ]
+  },
+  {
+    "id": "pummel",
+    "name": "Pummel Party",
+    "steamAppId": 880940,
+    "exe": [
+      "Pummel Party.exe"
+    ],
+    "tips": [
+      "Junte chaves: são elas que compram o cálice que vence a partida.",
+      "Guarde itens fortes para usar quando alguém estiver perto do cálice."
+    ],
+    "guides": []
+  },
+  {
+    "id": "schedule1",
+    "name": "Schedule I",
+    "exe": [
+      "Schedule I.exe"
+    ],
+    "tips": [
+      "Misture ingredientes para aumentar o valor do produto.",
+      "Contrate funcionários assim que puder para automatizar a produção."
+    ],
+    "guides": []
+  },
+  {
+    "id": "metalslug",
+    "name": "Metal Slug: Awakening",
+    "exe": [],
+    "tips": [
+      "Guarde as granadas para os chefes.",
+      "Pegue as armas especiais que caem e não desperdice munição."
+    ],
+    "guides": []
+  },
+  {
+    "id": "quarantinezone",
+    "name": "Quarantine Zone: The Last Check",
+    "exe": [],
+    "tips": [
+      "Confira todos os sintomas antes de liberar alguém no posto.",
+      "Na dúvida, mande para a quarentena em vez de liberar."
+    ],
+    "guides": []
+  },
+  {
+    "id": "aniimo",
+    "name": "Aniimo",
+    "exe": [],
+    "tips": [
+      "Monte um time com tipos variados para cobrir as fraquezas.",
+      "Explore o mapa: há muitos itens e Aniimos escondidos fora do caminho."
+    ],
+    "guides": []
+  }
+]
