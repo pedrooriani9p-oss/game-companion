@@ -87,7 +87,6 @@ const DEFAULT_STATE = {
     turboPower: false, turboAlerts: true, dailyLimitMin: 0,
     clips: false, clipSeconds: 30, clipAuto: true, clipQuality: '720',
     coach: true, coachAi: true,
-    voice: true, voiceVolume: 80, voiceEvents: { buy: true, timers: true, coach: true, net: true, goals: true, fps: false, quick: true },
     net: true, netHost: '1.1.1.1',
     autoUpdate: true,
     siteSync: true, quickWarm: true,
@@ -107,7 +106,7 @@ class Store {
       // Ajustes novos ganham o valor padrão sem perder os que o Pedro já mudou.
       this.state.settings = { ...DEFAULT_STATE.settings, ...(saved.settings || {}) };
       this.state.settings.hudItems = { ...DEFAULT_STATE.settings.hudItems, ...((saved.settings || {}).hudItems || {}) };
-      this.state.settings.voiceEvents = { ...DEFAULT_STATE.settings.voiceEvents, ...((saved.settings || {}).voiceEvents || {}) };
+      for (const k of ['voice', 'voiceVolume', 'voiceEvents']) delete this.state.settings[k]; // a voz foi retirada do app (1.2.1)
     } catch {
       this.state = structuredClone(DEFAULT_STATE);
     }

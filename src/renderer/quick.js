@@ -1,4 +1,4 @@
-// Pergunta rápida: o Pedro escreve, o Claude responde (a resposta também sai no HUD e na voz, pelo processo principal).
+// Pergunta rápida: o Pedro escreve, o Claude responde (a resposta também sai no HUD, pelo processo principal).
 const $ = (s) => document.querySelector(s);
 const SUGGESTIONS = ['Dica rápida para agora', 'O que estou errando?', 'O que eu devo treinar hoje?'];
 let info = { game: null, turns: [] };

@@ -33,7 +33,6 @@
     <symbol id="i-radio" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8a6 6 0 0 1 0 8.5"/><path d="M7.8 16.2a6 6 0 0 1 0-8.5"/><path d="M19.1 4.9a10 10 0 0 1 0 14.2"/><path d="M4.9 19.1a10 10 0 0 1 0-14.2"/></symbol>
     <symbol id="i-brain" viewBox="0 0 24 24"><path d="M9.5 2A2.5 2.5 0 0 0 7 4.5v.3A3 3 0 0 0 4.5 8a3 3 0 0 0 .4 1.5A3 3 0 0 0 4 12a3 3 0 0 0 1.6 2.6A3 3 0 0 0 8 19a2.5 2.5 0 0 0 4 1.5V4a2 2 0 0 0-2.5-2z"/><path d="M14.5 2A2.5 2.5 0 0 1 17 4.5v.3A3 3 0 0 1 19.5 8a3 3 0 0 1-.4 1.5A3 3 0 0 1 20 12a3 3 0 0 1-1.6 2.6A3 3 0 0 1 16 19a2.5 2.5 0 0 1-4 1.5"/></symbol>
     <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></symbol>
-    <symbol id="i-volume" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></symbol>
     <symbol id="i-scissors" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></symbol>
     <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
     <symbol id="i-folder" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></symbol>
@@ -51,7 +50,7 @@
         <div class="brand drag"><span class="brand-dot"></span>Game Companion</div>
         <div class="actions no-drag">
           <button id="btn-shot" class="icon-btn" title="Print do placar para o Claude ler (Ctrl+Shift+P)"><svg><use href="#i-camera"/></svg></button>
-          <button id="btn-quick" class="icon-btn" title="Perguntar ao Claude no jogo, com texto e voz (Ctrl+Shift+A)"><svg><use href="#i-bolt"/></svg></button>
+          <button id="btn-quick" class="icon-btn" title="Perguntar ao Claude no jogo (Ctrl+Shift+A)"><svg><use href="#i-bolt"/></svg></button>
           <button id="btn-web" class="icon-btn" title="Abrir o Claude: perguntas, partidas, imagens (Ctrl+Shift+W)"><svg><use href="#i-chat"/></svg></button>
           <button id="btn-compact" class="icon-btn" title="Modo compacto (Ctrl+Shift+M)"><svg><use href="#i-shrink"/></svg></button>
           <button id="btn-hide" class="icon-btn" title="Esconder (Ctrl+Shift+G). O app continua no ícone perto do relógio."><svg><use href="#i-x"/></svg></button>
@@ -377,17 +376,7 @@
           <label class="set-row">Ligar o app à página do Claude <input id="set-site" type="checkbox" class="switch"></label>
           <label class="set-row">Deixar o Claude pronto durante o jogo <input id="set-quick-warm" type="checkbox" class="switch"></label>
           <div class="row"><button id="btn-quick-open" class="btn ghost"><svg><use href="#i-bolt"/></svg>Perguntar agora</button><span class="muted small">Atalho: Ctrl+Shift+A</span></div>
-          <div class="small muted">Ctrl+Shift+A abre uma caixinha por cima do jogo: você pergunta e o Claude responde em texto e em voz, já sabendo o seu mapa, o placar e o seu histórico. Com isto ligado, o app também manda para a página o seu mapa e placar de agora (só os seus números, nada dos outros jogadores), as dicas do coach e as metas. "Pronto durante o jogo" deixa a janela do Claude aberta, escondida, para a resposta sair mais rápido; usa mais memória do PC.</div>
-        </div>
-        <div class="card">
-          <div class="card-label"><svg><use href="#i-volume"/></svg>Avisos falados</div>
-          <label class="set-row">Falar os avisos em voz alta <input id="set-voice" type="checkbox" class="switch"></label>
-          <label class="set-row">Volume <input id="set-voice-volume" type="range" min="10" max="100" step="10"></label>
-          <div class="chips toggles" id="set-voice-events">
-            <button data-ev="buy">Dica de compra do CS2</button><button data-ev="timers">Timers e lembretes</button><button data-ev="coach">Coach</button>
-            <button data-ev="net">Internet instável</button><button data-ev="goals">Metas batidas</button><button data-ev="fps">Queda de FPS</button><button data-ev="quick">Respostas rápidas do Claude</button>
-          </div>
-          <div class="row"><button id="btn-voice-test" class="btn ghost"><svg><use href="#i-volume"/></svg>Testar a voz</button><span id="voice-name" class="muted small"></span></div>
+          <div class="small muted">Ctrl+Shift+A abre uma caixinha por cima do jogo: você pergunta e o Claude responde em texto, já sabendo o seu mapa, o placar e o seu histórico. Com isto ligado, o app também manda para a página o seu mapa e placar de agora (só os seus números, nada dos outros jogadores), as dicas do coach e as metas. "Pronto durante o jogo" deixa a janela do Claude aberta, escondida, para a resposta sair mais rápido; usa mais memória do PC.</div>
         </div>
         <div class="card">
           <div class="card-label"><svg><use href="#i-wifi"/></svg>Internet</div>

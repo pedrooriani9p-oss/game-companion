@@ -365,7 +365,6 @@ function alertUser(text) {
   b.textContent = `⏰ ${text}`; b.hidden = false;
   clearTimeout(b._t); b._t = setTimeout(() => { b.hidden = true; }, 8000);
   beep();
-  if (settings.voice && (settings.voiceEvents || {}).timers) setTimeout(() => say(text), 900);
   try { new Notification('Game Companion', { body: text, silent: true }); } catch {}
 }
 
@@ -498,9 +497,6 @@ function applySettings() {
   $('#set-coach').checked = settings.coach !== false;
   $('#set-coach-ai').checked = settings.coachAi !== false;
   $('#set-coach-ai').disabled = settings.coach === false;
-  $('#set-voice').checked = Boolean(settings.voice);
-  $('#set-voice-volume').value = settings.voiceVolume ?? 80;
-  $$('#set-voice-events button').forEach((b) => b.classList.toggle('on', Boolean((settings.voiceEvents || {})[b.dataset.ev])));
   $('#set-net').checked = settings.net !== false;
   if (document.activeElement !== $('#set-net-host')) $('#set-net-host').value = settings.netHost || '1.1.1.1';
   $('#set-auto-update').checked = settings.autoUpdate !== false;
@@ -528,10 +524,6 @@ $('#set-clip-auto').onchange = (e) => setSetting('clipAuto', e.target.checked);
 $('#btn-clips-folder').onclick = () => window.api.openClipsFolder();
 $('#set-coach').onchange = (e) => setSetting('coach', e.target.checked);
 $('#set-coach-ai').onchange = (e) => setSetting('coachAi', e.target.checked);
-$('#set-voice').onchange = (e) => setSetting('voice', e.target.checked);
-$('#set-voice-volume').onchange = (e) => { setSetting('voiceVolume', Number(e.target.value)); say('Volume da voz', Number(e.target.value) / 100); };
-$$('#set-voice-events button').forEach((b) => b.onclick = () => setSetting('voiceEvents', { ...(settings.voiceEvents || {}), [b.dataset.ev]: !(settings.voiceEvents || {})[b.dataset.ev] }));
-$('#btn-voice-test').onclick = () => say('Compra completa. Fuzil, colete e granadas.');
 $('#set-net').onchange = (e) => setSetting('net', e.target.checked);
 $('#set-net-host').onchange = (e) => setSetting('netHost', e.target.value.trim() || '1.1.1.1');
 $('#set-auto-update').onchange = (e) => setSetting('autoUpdate', e.target.checked);
@@ -1068,27 +1060,6 @@ function renderEvoCoach() {
   }).join('');
 }
 window.api.onCoach((c) => { coachData = c; renderCoach(); });
-
-// ---------- Avisos falados ----------
-// A voz é a do Windows (Microsoft Maria, Francisca ou Daniel, em português).
-let voice = null;
-function pickVoice() {
-  const all = speechSynthesis.getVoices();
-  voice = all.find((v) => /pt-BR/i.test(v.lang) && /Francisca|Thalita|Maria|Daniel|Google/i.test(v.name)) || all.find((v) => /pt-BR/i.test(v.lang)) || all.find((v) => /^pt/i.test(v.lang)) || null;
-  $('#voice-name').textContent = voice ? voice.name.replace(/^Microsoft\s+/, '').replace(/\s+Online.*$/, '') : all.length ? 'Sem voz em português: instale em Configurações do Windows, Hora e idioma, Fala.' : '';
-}
-try { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; } catch {}
-function say(text, volume) {
-  try {
-    if (!text) return;
-    const u = new SpeechSynthesisUtterance(String(text));
-    u.lang = 'pt-BR'; if (voice) u.voice = voice;
-    u.volume = volume ?? (settings.voiceVolume ?? 80) / 100; u.rate = 1.08;
-    window.__spoken = [...(window.__spoken || []), String(text)].slice(-20);
-    speechSynthesis.speak(u);
-  } catch {}
-}
-window.api.onSpeak((m) => say(m.text, m.volume));
 
 // ---------- Internet ----------
 let netData = null;

@@ -426,7 +426,7 @@ const cs2 = new Cs2Live();
 let cs2Seen = 0;
 let cs2Status = 'off';
 let cs2RoundKills = 0;
-let cs2RoundPhase = null, cs2Phase = null;
+let cs2Phase = null;
 function cs2Token() {
   if (!store.state.cs2Token) { store.state.cs2Token = crypto.randomBytes(12).toString('hex'); store.save(); }
   return store.state.cs2Token;
@@ -459,10 +459,9 @@ function startCs2Server() {
       cs2Seen = Date.now(); cs2Status = 'live';
       const { state, match } = cs2.update(p);
       send('cs2', state);
-      // Começo da rodada (tempo de compra): a dica de compra em voz. Nova partida: lembrete do coach.
-      if (state && state.roundPhase === 'freezetime' && cs2RoundPhase !== 'freezetime' && state.buy) speak('buy', state.buy.say);
+      // Nova partida: lembrete do coach.
       if (state && cs2Phase && state.phase !== cs2Phase && (state.phase === 'warmup' || cs2Phase === 'gameover')) coachRemind('cs2');
-      cs2RoundPhase = state ? state.roundPhase : null; cs2Phase = state ? state.phase : null;
+      cs2Phase = state ? state.phase : null;
       liveSync();
       if (match) onCs2Match(match);
       // Clipe sozinho: 3 ou mais abates na mesma rodada.
@@ -1088,7 +1087,7 @@ function checkGoals(game = null) {
     const p = stats.goalProgress(g, store.state.history, store.state.sessions, now);
     if (!p) continue;
     const where = g.game ? ` no ${nameOfGame(g.game)}` : '';
-    if (p.done && !g.doneAt) { g.doneAt = now; changed = true; notify(`🎯 Meta batida${where}: ${p.label} chegou a ${p.valueText} (meta ${p.targetText}).`); speak('goals', `Meta batida${where}!`); }
+    if (p.done && !g.doneAt) { g.doneAt = now; changed = true; notify(`🎯 Meta batida${where}: ${p.label} chegou a ${p.valueText} (meta ${p.targetText}).`); }
     if (p.over && g.warnedWeek !== stats.weekStart(now)) { g.warnedWeek = stats.weekStart(now); changed = true; notify(`⏳ Você passou de ${p.targetText} h de jogo esta semana${where}. Já são ${p.valueText} h.`); }
   }
   if (changed) { store.save(); send('history-changed'); }
@@ -1200,7 +1199,6 @@ async function onFpsDrop(drop) {
   if (store.state.settings.turboAlerts !== false && Date.now() - lastDropToast > 5 * 60000) {
     lastDropToast = Date.now();
     notify(`📉 FPS caiu de ${drop.from} para ${drop.to}. ${why.text}`);
-    speak('fps', `FPS caiu para ${drop.to}`);
   }
 }
 function checkHeat(sys) {
@@ -1449,7 +1447,6 @@ function showCoach(tip) {
   const text = tip.ai || tip.local.text;
   notify(`🧠 Coach: ${text}`);
   hudCoach = { text, until: Date.now() + 45000, label: 'Coach' };
-  speak('coach', text);
   send('coach', coachInfo());
   hudTick();
   queueCoach(tip);
@@ -1471,7 +1468,7 @@ function coachAsk(id) {
   return askClaude(t.game, coach.followUp(match, ctx, nameOfGame(t.game), t.ai || t.local.text));
 }
 
-// ---------- Pergunta rápida (Ctrl+Shift+A): caixinha por cima do jogo; o Claude responde em texto e voz ----------
+// ---------- Pergunta rápida (Ctrl+Shift+A): caixinha por cima do jogo; o Claude responde em texto (e no HUD) ----------
 let quickWin = null, quickBusy = false, quickSize = 170;
 const quickChat = new bridge.QuickChat();
 // O jogo da pergunta: o que está aberto ou, se o Pedro acabou de fechar, o da última sessão.
@@ -1484,7 +1481,7 @@ function quickGame() {
 function quickInfo() {
   const g = quickGame(), snap = liveSnapshot();
   const line = snap ? (snap.text || [snap.map, snap.mode, snap.score && `placar ${snap.score}`, snap.k != null && `${snap.k}/${snap.a ?? '?'}/${snap.d ?? '?'}`].filter(Boolean).join(' · ')) : '';
-  return { game: g ? g.id : null, gameName: g ? nameOfGame(g.id) : null, line, turns: g ? quickChat.turns(g.id) : [], busy: quickBusy, visible: Boolean(quickWin && !quickWin.isDestroyed() && quickWin.isVisible()), ready: Boolean(claudeWin && !claudeWin.isDestroyed()), voice: Boolean(store.state.settings.voice) };
+  return { game: g ? g.id : null, gameName: g ? nameOfGame(g.id) : null, line, turns: g ? quickChat.turns(g.id) : [], busy: quickBusy, visible: Boolean(quickWin && !quickWin.isDestroyed() && quickWin.isVisible()), ready: Boolean(claudeWin && !claudeWin.isDestroyed()) };
 }
 function placeQuick(height = quickSize) {
   if (!quickWin || quickWin.isDestroyed()) return;
@@ -1501,7 +1498,7 @@ function quickWindow() {
   quickWin.setAlwaysOnTop(true, 'screen-saver');
   quickWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   quickWin.loadFile(path.join(__dirname, 'renderer', 'quick.html'));
-  // Voltou para o jogo: a caixinha some (a resposta ainda sai no HUD e na voz).
+  // Voltou para o jogo: a caixinha some (a resposta ainda sai no HUD).
   quickWin.on('blur', () => setTimeout(() => { if (quickWin && !quickWin.isDestroyed() && quickWin.isVisible() && !quickWin.isFocused()) quickWin.hide(); }, 250));
   quickWin.on('closed', () => { quickWin = null; });
   return quickWin;
@@ -1534,7 +1531,6 @@ async function askQuick(question) {
     quickChat.add(g.id, q, text);
     hudCoach = { text, until: Date.now() + 40000, label: 'Claude' };
     hudTick();
-    speak('quick', text);
     return { text };
   } finally { quickBusy = false; touchBridge(); }
 }
@@ -1544,17 +1540,6 @@ setInterval(() => {
   const keep = currentGame && siteOn() && store.state.settings.quickWarm !== false;
   if (!keep && Date.now() - lastBridgeUse > 12 * 60000) claudeWin.destroy();
 }, 60000);
-
-// ---------- Avisos falados (dica de compra, timers, coach, internet, metas) ----------
-let lastSpoken = { text: '', at: 0 };
-function speak(kind, text) {
-  const s = store.state.settings;
-  if (!s.voice || !(s.voiceEvents || {})[kind] || !text) return;
-  const clean = String(text).replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '').replace(/\s+/g, ' ').trim();
-  if (!clean || (clean === lastSpoken.text && Date.now() - lastSpoken.at < 15000)) return;
-  lastSpoken = { text: clean, at: Date.now() };
-  send('speak', { text: clean, volume: Math.max(0, Math.min(1, (Number(s.voiceVolume) || 80) / 100)), kind });
-}
 
 // ---------- Internet: ping e perda de pacotes, até o roteador e até a internet ----------
 const netState = { inet: new netLib.PingStats(), gw: new netLib.PingStats(), proc: null, hosts: '', gateway: undefined, base: null, lastAlert: 0, trouble: null };
@@ -1630,7 +1615,6 @@ function checkNet() {
     const what = t === 'loss' ? `${Math.round(recent.loss * 100)}% dos pacotes se perderam` : t === 'ping' ? `ping em ${recent.avg} ms` : `ping oscilando ${recent.jitter} ms`;
     const diag = netLib.diagnose(recent, netState.gw.summary(30000, now));
     notify(`📶 Internet instável: ${what} no último meio minuto. ${diag.text}`);
-    speak('net', t === 'loss' ? 'Internet perdendo pacotes' : 'Ping alto');
   }
   netState.trouble = t;
   if (win && win.isVisible()) send('net', netInfo());
@@ -1829,8 +1813,7 @@ function registerIpc() {
       hudItems: (v) => Object.fromEntries(Object.keys(store.state.settings.hudItems || {}).map((k) => [k, Boolean(v && v[k])])),
       turboPower: Boolean, turboAlerts: Boolean, dailyLimitMin: (v) => Math.max(0, Math.min(24 * 60, Math.round(Number(v) || 0))),
       clips: Boolean, clipSeconds: (v) => ([15, 30, 60].includes(Number(v)) ? Number(v) : 30), clipAuto: Boolean, clipQuality: (v) => (v === '1080' ? '1080' : '720'),
-      coach: Boolean, coachAi: Boolean, voice: Boolean, voiceVolume: (v) => Math.max(10, Math.min(100, Math.round(Number(v) || 80))),
-      voiceEvents: (v) => Object.fromEntries(Object.keys(store.state.settings.voiceEvents || {}).map((k) => [k, Boolean(v && v[k])])),
+      coach: Boolean, coachAi: Boolean,
       net: Boolean, netHost: (v) => (netLib.hostOk(String(v || '').trim()) ? String(v).trim().slice(0, 100) : '1.1.1.1'), autoUpdate: Boolean,
       siteSync: Boolean, quickWarm: Boolean,
     };

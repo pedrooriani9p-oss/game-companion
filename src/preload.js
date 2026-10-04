@@ -69,8 +69,7 @@ contextBridge.exposeInMainWorld('api', {
   coach: () => ipcRenderer.invoke('coach'),
   coachAsk: (id) => ipcRenderer.invoke('coach-ask', id),
   onCoach: (cb) => ipcRenderer.on('coach', (_e, c) => cb(c)),
-  // Voz e internet
-  onSpeak: (cb) => ipcRenderer.on('speak', (_e, m) => cb(m)),
+  // Internet
   net: () => ipcRenderer.invoke('net'),
   netWatch: (on) => ipcRenderer.invoke('net-watch', on),
   onNet: (cb) => ipcRenderer.on('net', (_e, n) => cb(n)),

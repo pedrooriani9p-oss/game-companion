@@ -509,7 +509,17 @@ const turbo = require('../src/turbo');
   assert(up.verify({ size: 5e6, sha256: 'x' }, { size: 5e6, sha256: null }), 'sem digest, confere o tamanho');
 }
 
-// ---------- Dica de compra falada (CS2) ----------
+// ---------- A voz saiu do app (1.2.1): ajustes antigos de voz são descartados ----------
+{
+  const f = path.join(os.tmpdir(), `gc-voz-${Date.now()}.json`);
+  fs.writeFileSync(f, JSON.stringify({ settings: { opacity: 70, voice: true, voiceVolume: 50, voiceEvents: { buy: true } } }));
+  const st = new core.Store(f);
+  assert.strictEqual(st.state.settings.opacity, 70, 'os outros ajustes continuam');
+  for (const k of ['voice', 'voiceVolume', 'voiceEvents']) assert(!(k in st.state.settings), `${k} some`);
+  assert(!('voice' in new core.Store(path.join(os.tmpdir(), `gc-voz-novo-${Date.now()}.json`)).state.settings));
+}
+
+// ---------- Dica de compra (CS2) ----------
 {
   const { buyAdvice } = require('../src/cs2');
   const b = buyAdvice({ mode: 'competitive', money: 6000, team: 'CT', round: 5, phase: 'live' });
