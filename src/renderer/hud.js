@@ -37,6 +37,9 @@ function render() {
     if (c.buy && c.roundPhase === 'freezetime') rows.push(`<div class="row"><span class="pill tip ${esc(c.buy.kind)}">💰 ${esc(c.buy.text)}</span></div>`);
   } else if (it.live && data.live) {
     rows.push(`<div class="row"><span class="pill">${esc(data.live.title)} · ${esc(data.live.text)}</span></div>`);
+    // Dica da rodada (Valorant): só na janela de compra.
+    const ad = data.live.advice;
+    if (ad) rows.push(`<div class="row"><span class="pill tip ${esc(ad.kind)}">${['pistol', 'eco', 'force', 'full'].includes(ad.kind) ? '💰' : '🎯'} ${esc(ad.text)}</span></div>`);
   }
   // Dica do coach: aparece por alguns segundos depois da partida e no começo da próxima.
   if (it.coach && data.coach) rows.push(`<div class="row"><span class="pill tip coach">🧠 <span><small>${esc(data.coach.label)}</small><br>${esc(data.coach.text)}</span></span></div>`);

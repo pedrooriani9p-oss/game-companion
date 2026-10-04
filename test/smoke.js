@@ -519,6 +519,44 @@ const turbo = require('../src/turbo');
   assert(!('voice' in new core.Store(path.join(os.tmpdir(), `gc-voz-novo-${Date.now()}.json`)).state.settings));
 }
 
+// ---------- Dica da rodada do Valorant (o parente da dica de compra do CS2) ----------
+{
+  const v = require('../src/live/valorant');
+  const adv = (o) => v.roundAdvice({ queue: 'competitive', ...o });
+  assert.strictEqual(adv({ ally: 0, enemy: 0 }).kind, 'pistol');
+  assert.strictEqual(adv({ ally: 7, enemy: 5 }).kind, 'pistol', 'rodada 13 (segundo tempo) também é pistola');
+  assert.strictEqual(adv({ ally: 0, enemy: 1, last: 'D', lossStreak: 1 }).kind, 'eco', 'perdeu a pistola');
+  assert.strictEqual(adv({ ally: 1, enemy: 0, last: 'V', winStreak: 1 }).kind, 'full', 'ganhou a pistola');
+  assert.strictEqual(adv({ ally: 2, enemy: 5, last: 'D', lossStreak: 2 }).kind, 'eco');
+  assert.strictEqual(adv({ ally: 2, enemy: 6, last: 'D', lossStreak: 3 }).kind, 'force');
+  assert.strictEqual(adv({ ally: 6, enemy: 3, last: 'V', winStreak: 2 }).kind, 'full');
+  assert.strictEqual(adv({ ally: 5, enemy: 3, last: 'V', winStreak: 1 }), null, 'sem o dinheiro do time, só dá dica quando faz sentido');
+  assert.strictEqual(adv({ ally: 12, enemy: 6 }).kind, 'point');
+  assert.strictEqual(adv({ ally: 6, enemy: 12 }).kind, 'all-in');
+  assert.strictEqual(adv({ ally: 12, enemy: 12 }).kind, 'ot');
+  assert.strictEqual(adv({ ally: 14, enemy: 13 }).kind, 'ot');
+  for (const q of ['deathmatch', 'spikerush', 'swiftplay', 'hurm', 'ggteam']) assert.strictEqual(v.roundAdvice({ ally: 0, enemy: 0, queue: q }), null, `${q} não tem economia de rodada`);
+  // O acompanhante do placar: sequências, janela de compra e reinício em partida nova.
+  const t = new v.RoundTracker(), at = 1_000_000;
+  const st = (ally, enemy, o = {}) => ({ loop: 'INGAME', mapUrl: '/Game/Maps/Bonsai/Bonsai', queue: 'competitive', ally, enemy, ...o });
+  assert.strictEqual(t.advice(), null, 'sem partida, sem dica');
+  t.update(st(0, 0), at);
+  let a = t.advice();
+  assert.strictEqual(a.kind, 'pistol'); assert.strictEqual(a.from, at + 15000, 'a primeira rodada espera o jogo carregar'); assert.strictEqual(a.until, at + 60000);
+  t.update(st(0, 1), at + 70000); a = t.advice();
+  assert.strictEqual(a.kind, 'eco'); assert.strictEqual(a.from, at + 75000); assert.strictEqual(a.until, at + 108000);
+  t.update(st(0, 2), at + 120000); assert.strictEqual(t.lossStreak, 2); assert.strictEqual(t.advice().kind, 'eco');
+  t.update(st(0, 3), at + 170000); assert.strictEqual(t.advice().kind, 'force');
+  t.update(st(1, 3), at + 220000); assert.strictEqual(t.lossStreak, 0); assert.strictEqual(t.winStreak, 1); assert.strictEqual(t.advice(), null);
+  t.update(st(3, 3), at + 300000); assert.strictEqual(t.winStreak, 3, 'perdeu uma leitura: soma as vitórias'); assert.strictEqual(t.advice().kind, 'full');
+  t.update(st(4, 4), at + 360000); assert.strictEqual(t.winStreak, 0, 'duas rodadas de lados diferentes: não adivinha a sequência'); assert.strictEqual(t.last, '');
+  t.update(st(0, 0), at + 400000); assert.strictEqual(t.advice().kind, 'pistol', 'placar zerou: partida nova');
+  assert.strictEqual(t.advice().from, at + 400000 + 15000);
+  t.update({ loop: 'MENUS' }, at + 500000); assert.strictEqual(t.advice(), null, 'no menu, sem dica');
+  t.update(st(0, 0, { mapUrl: '/Game/Maps/Triad/Triad' }), at + 600000); t.update(st(1, 0, { mapUrl: '/Game/Maps/Ascent/Ascent' }), at + 620000);
+  assert.strictEqual(t.winStreak, 0, 'mapa diferente: começa do zero');
+}
+
 // ---------- App mais leve (1.2.2): "Claude pronto durante o jogo" vem desligado ----------
 {
   const f = path.join(os.tmpdir(), `gc-leve-${Date.now()}.json`);

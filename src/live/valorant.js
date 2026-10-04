@@ -83,6 +83,53 @@ class ValorantLive {
   }
 }
 
+// ---------- Dica da rodada (o parente da dica de compra do CS2) ----------
+// O Valorant não mostra o dinheiro do time pela API local, então a dica sai só do placar, que é o que aparece na tela:
+// rodada de pistola, sequência de derrotas ou vitórias, ponto de partida, prorrogação.
+const ECONOMY_QUEUES = new Set(['competitive', 'unrated', 'premier', '']);
+function roundAdvice({ ally = 0, enemy = 0, queue = '', winStreak = 0, lossStreak = 0, last = '' } = {}) {
+  if (!ECONOMY_QUEUES.has(queue)) return null;
+  const total = ally + enemy;
+  if (ally >= 12 && enemy >= 12) return { kind: 'ot', text: 'Prorrogação: cada rodada decide a partida. Jogue junto e sem riscos.' };
+  if (enemy === 12) return { kind: 'all-in', text: 'O adversário está a uma rodada de vencer: compre completo e jogue junto.' };
+  if (ally === 12) return { kind: 'point', text: 'Falta uma rodada para vencer: jogue junto e evite riscos.' };
+  if (total === 0 || total === 12) return { kind: 'pistol', text: 'Rodada de pistola: colete leve e habilidades. Combine a jogada com o time.' };
+  if ((total === 1 || total === 13) && last === 'D') return { kind: 'eco', text: 'Perdeu a pistola: a próxima costuma ser de economia. Combine com o time.' };
+  if ((total === 1 || total === 13) && last === 'V') return { kind: 'full', text: 'Ganhou a pistola: o adversário deve economizar. Compre bem e jogue junto.' };
+  if (lossStreak >= 3) return { kind: 'force', text: 'Bônus de derrota no máximo: se o time tiver dinheiro, compre completo.' };
+  if (lossStreak === 2) return { kind: 'eco', text: '2 derrotas seguidas: um eco agora pode ajudar a comprar completo depois.' };
+  if (winStreak >= 2) return { kind: 'full', text: 'Venceram 2 ou mais seguidas: mantenha o dinheiro e compre completo.' };
+  return null;
+}
+
+// Acompanha o placar da presença: sabe quando uma rodada acabou e quantas seguidas o time ganhou ou perdeu.
+// A dica aparece na janela de compra: depois da mudança do placar (a rodada acaba, a compra começa uns segundos depois).
+class RoundTracker {
+  constructor() { this.reset(); }
+  reset() { this.key = null; this.total = 0; this.ally = 0; this.enemy = 0; this.queue = ''; this.winStreak = 0; this.lossStreak = 0; this.last = ''; this.at = 0; this.first = true; }
+  update(s, now = Date.now()) {
+    if (!s || s.loop !== 'INGAME') { this.reset(); return; }
+    const key = `${s.mapUrl}|${s.queue}`, total = (s.ally || 0) + (s.enemy || 0);
+    if (this.key !== key || total < this.total) { this.reset(); this.key = key; this.at = now; }
+    else if (total > this.total) {
+      const dA = s.ally - this.ally, dE = s.enemy - this.enemy;
+      if (dA > 0 && dE === 0) { this.winStreak += dA; this.lossStreak = 0; this.last = 'V'; }
+      else if (dE > 0 && dA === 0) { this.lossStreak += dE; this.winStreak = 0; this.last = 'D'; }
+      else { this.winStreak = 0; this.lossStreak = 0; this.last = ''; }   // perdeu leituras no meio: não arrisca
+      this.first = false; this.at = now;
+    }
+    this.total = total; this.ally = s.ally || 0; this.enemy = s.enemy || 0; this.queue = s.queue;
+  }
+  // { kind, text, from, until } (horários em ms) ou null. A primeira rodada espera o jogo carregar.
+  advice() {
+    if (this.key == null) return null;
+    const a = roundAdvice({ ally: this.ally, enemy: this.enemy, queue: this.queue, winStreak: this.winStreak, lossStreak: this.lossStreak, last: this.last });
+    if (!a) return null;
+    const from = this.at + (this.first ? 15000 : 5000), until = this.at + (this.first ? 60000 : 38000);
+    return { ...a, from, until };
+  }
+}
+
 // Região e versão no registro do jogo (ShooterGame.log).
 function parseShooterLog(text) {
   const m = String(text).match(/https:\/\/glz-([a-z0-9]+)-1\.([a-z0-9]+)\.a\.pvp\.net/);
@@ -130,4 +177,4 @@ function matchFromPresence(s, at = Date.now()) {
   return { at, res, k: null, a: null, d: null, map: s.map, mode: s.queueLabel, score: s.queue === 'deathmatch' ? null : [s.ally, s.enemy], note: `${s.map} · ${s.queueLabel}${s.queue === 'deathmatch' ? '' : `, placar ${s.ally}-${s.enemy}`} (registrado pelo app do PC, sem K/D)` };
 }
 
-module.exports = { parseLockfile, mapName, decodePresence, flatten, liveFromPresence, ValorantLive, parseShooterLog, summarizeMatch, matchFromPresence, MAP_TIPS, QUEUES };
+module.exports = { roundAdvice, RoundTracker, parseLockfile, mapName, decodePresence, flatten, liveFromPresence, ValorantLive, parseShooterLog, summarizeMatch, matchFromPresence, MAP_TIPS, QUEUES };

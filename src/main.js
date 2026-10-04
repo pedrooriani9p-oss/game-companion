@@ -686,6 +686,7 @@ async function valNames() {
 }
 function valorantLive(id) {
   const vl = new valorant.ValorantLive();
+  const rounds = new valorant.RoundTracker();
   const lockPath = path.join(localAppData(), 'Riot Games', 'Riot Client', 'Config', 'lockfile');
   const sess = { matches: 0, wins: 0, k: 0, d: 0, withKd: 0 };
   const reported = new Set(store.state.valReported || []);
@@ -749,6 +750,7 @@ function valorantLive(id) {
       const names = await valNames();
       const { state: s, ended } = vl.update(pres ? valorant.decodePresence(pres.private) : null, names.maps);
       if (s && state && s.map !== state.map) tip = 0;
+      rounds.update(s);
       if (s && s.loop === 'INGAME' && state && state.loop !== 'INGAME') coachRemind('valorant');
       state = s; msg = s ? '' : 'Entre no Valorant para ver o mapa e o placar aqui.';
       if (s && s.loop === 'INGAME' && !agent && Date.now() - agentTry > 60000) { agentTry = Date.now(); fetchAgent(); }
@@ -770,9 +772,11 @@ function valorantLive(id) {
       stats.push(['Partidas na sessão', String(sess.matches)]);
       if (sess.matches) stats.push(['Vitórias', String(sess.wins)]);
       if (sess.withKd) stats.push(['K/D', `${sess.k}/${sess.d}`]);
+      const adv = ingame ? rounds.advice() : null, now = Date.now();
       return {
         game: id, title: 'Valorant ao vivo', sub: s ? [s.stateLabel, s.map, s.loop !== 'MENUS' ? s.queueLabel : ''].filter(Boolean).join(' · ') : '',
-        stats, tip: s && s.tips.length ? s.tips[tip % s.tips.length] : '', msg,
+        stats, tip: adv && now >= adv.from && now <= adv.until ? adv.text : s && s.tips.length ? s.tips[tip % s.tips.length] : '', msg,
+        advice: adv,
         compact: ingame ? `${s.map} ${s.ally}-${s.enemy}${agent ? ` · ${agent}` : ''}` : '',
       };
     },
@@ -1196,6 +1200,11 @@ function syncHud() {
   if (!w.webContents.isLoading() && !w.isVisible()) w.showInactive();
   hudTick();
 }
+// Dica da rodada do Valorant: só dentro da janela de compra (os horários vêm junto com a dica).
+function liveAdvice(card) {
+  const a = card && card.advice, now = Date.now();
+  return a && now >= a.from && now <= a.until ? { kind: a.kind, text: a.text } : null;
+}
 function hudTick() {
   if (!hudWin || hudWin.isDestroyed() || !hudWin.isVisible()) return;
   const f = fps.meter && fps.meter.read();
@@ -1208,7 +1217,7 @@ function hudTick() {
     sys: lastSys && Date.now() - lastSys.at < 10000 ? { cpu: lastSys.cpu, gpu: lastSys.gpu, cpuTemp: lastSys.cpuTemp, gpuTemp: lastSys.gpuTemp } : null,
     timers: panelTimers.filter((t) => t.end > Date.now()).sort((a, b) => a.end - b.end).slice(0, 2),
     cs2: c ? { map: c.mapLabel, ct: c.ctScore, t: c.tScore, team: c.team, money: c.money, phase: c.phase, roundPhase: c.roundPhase, buy: c.buy } : null,
-    live: liveCard && liveCard.compact ? { title: liveCard.title.replace(/ ao vivo$/, ''), text: liveCard.compact } : null,
+    live: liveCard && liveCard.compact ? { title: liveCard.title.replace(/ ao vivo$/, ''), text: liveCard.compact, advice: liveAdvice(liveCard) } : null,
     rec: clips.status === 'on',
     coach: hudCoach && hudCoach.until > Date.now() ? { text: hudCoach.text, label: hudCoach.label } : null,
     net: netHud(),
