@@ -1,0 +1,25 @@
+html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; font: 14px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; color: #eef0f6; }
+#box { position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 12px; border-radius: 14px; background: rgba(20, 23, 31, 0.97); border: 1px solid rgba(255, 255, 255, 0.12); border-top: 3px solid #6aa8ff; box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55); }
+#head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+#dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: #5ad1a0; }
+#dot.wait { background: #f0b34a; }
+#game { flex: none; font-size: 13px; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#line { flex: 1; min-width: 0; color: #8d93a5; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#head button { flex: none; border: 0; background: transparent; color: #8d93a5; font: inherit; font-size: 12px; padding: 2px 6px; border-radius: 6px; cursor: pointer; }
+#head button:hover { background: rgba(255, 255, 255, 0.08); color: #eef0f6; }
+#log { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto; }
+#log:empty { display: none; }
+.turn { padding: 7px 10px; border-radius: 10px; max-width: 94%; overflow-wrap: anywhere; }
+.turn.user { align-self: flex-end; background: rgba(106, 168, 255, 0.18); color: #cfe2ff; font-size: 13px; }
+.turn.assistant { align-self: flex-start; background: rgba(255, 255, 255, 0.07); }
+.turn.error { align-self: flex-start; background: rgba(240, 120, 90, 0.16); color: #ffcbb8; font-size: 13px; }
+.turn.wait { align-self: flex-start; color: #8d93a5; font-style: italic; }
+#chips { display: flex; flex-wrap: wrap; gap: 6px; }
+#chips:empty { display: none; }
+#chips button { border: 1px solid rgba(255, 255, 255, 0.14); background: transparent; color: #cfd3df; font: inherit; font-size: 12px; padding: 3px 10px; border-radius: 999px; cursor: pointer; }
+#chips button:hover { border-color: #6aa8ff; color: #fff; }
+#form { display: flex; gap: 8px; }
+#q { flex: 1; min-width: 0; padding: 9px 12px; border-radius: 9px; border: 1px solid rgba(255, 255, 255, 0.16); background: #0f1219; color: inherit; font: inherit; }
+#q:focus { outline: 2px solid #6aa8ff; outline-offset: 1px; }
+#go { padding: 0 14px; border: 0; border-radius: 9px; background: #6aa8ff; color: #0b1220; font: inherit; font-weight: 600; cursor: pointer; }
+#go:disabled, #q:disabled { opacity: 0.55; cursor: default; }

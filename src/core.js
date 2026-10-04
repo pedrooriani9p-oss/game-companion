@@ -75,6 +75,8 @@ const DEFAULT_STATE = {
   cs2Matches: [],   // partidas do CS2 registradas pelo modo ao vivo
   ignoredExe: [],   // programas marcados como "não é um jogo"
   pendingMatches: [], // partidas ainda não enviadas para a janela do Claude
+  pendingCoach: [],   // dicas do coach ainda não enviadas para a página: [{ at, game, text, title }]
+  pageGoals: {},      // metas escritas na página do Claude: { jogo: [{ id, text, done }] }
   history: [],      // todas as partidas, para a aba Evolução: [{ game, at, res, k, a, d, map, ... }]
   goals: [],        // metas: [{ id, game, type, target, doneAt?, warnedWeek? }]
   lastWeekly: 0,    // segunda-feira do último aviso de resumo da semana
@@ -85,9 +87,10 @@ const DEFAULT_STATE = {
     turboPower: false, turboAlerts: true, dailyLimitMin: 0,
     clips: false, clipSeconds: 30, clipAuto: true, clipQuality: '720',
     coach: true, coachAi: true,
-    voice: true, voiceVolume: 80, voiceEvents: { buy: true, timers: true, coach: true, net: true, goals: true, fps: false },
+    voice: true, voiceVolume: 80, voiceEvents: { buy: true, timers: true, coach: true, net: true, goals: true, fps: false, quick: true },
     net: true, netHost: '1.1.1.1',
     autoUpdate: true,
+    siteSync: true, quickWarm: true,
   },
   reminders: [
     { id: 'agua', label: 'Beber água', everyMin: 30, enabled: true },

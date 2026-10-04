@@ -206,6 +206,9 @@ table.grid tr.worst td:first-child::after { content: ' ▼ pior'; color: var(--d
 .goal .top button:hover { color: var(--danger); }
 .goal .bar { margin-top: 4px; } .goal.done .bar i { background: linear-gradient(90deg, #ffd27a, #ffb454); } .goal.over .bar i { background: var(--danger); }
 .goal .sub { font-size: 10.5px; color: var(--faint); margin-top: 2px; }
+.card-sub { margin-top: 10px; font-size: 10.5px; letter-spacing: .4px; text-transform: uppercase; color: var(--faint); }
+.page-goals { display: grid; gap: 4px; margin-top: 4px; } .page-goals label { display: flex; align-items: center; gap: 8px; font-size: 12px; } .page-goals label.done span { text-decoration: line-through; color: var(--muted); } .page-goals input { flex: none; }
+.goal-form input { flex: 1; min-width: 0; }
 .goal-form { display: flex; gap: 6px; margin: 8px 0 4px; } .goal-form select { flex: 1; min-width: 0; font-size: 12px; }
 .btn.wide { width: 100%; justify-content: center; margin-top: 8px; }
 .center { text-align: center; margin: 6px 0; }

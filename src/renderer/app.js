@@ -38,6 +38,8 @@ function showTab(name) { const b = document.querySelector(`.tabs button[data-tab
 
 $('#btn-hide').onclick = () => window.api.hide();
 $('#btn-web').onclick = () => window.api.openWeb();
+$('#btn-quick').onclick = () => window.api.openQuick();
+$('#btn-quick-open').onclick = () => window.api.openQuick();
 $('#btn-shot').onclick = () => window.api.captureScore();
 $('#btn-browser').onclick = () => window.api.openWebExternal();
 $('#btn-fps-admin').onclick = () => { window.api.fpsAdmin(); $('#btn-fps-admin').hidden = true; };
@@ -502,6 +504,9 @@ function applySettings() {
   $('#set-net').checked = settings.net !== false;
   if (document.activeElement !== $('#set-net-host')) $('#set-net-host').value = settings.netHost || '1.1.1.1';
   $('#set-auto-update').checked = settings.autoUpdate !== false;
+  $('#set-site').checked = settings.siteSync !== false;
+  $('#set-quick-warm').checked = settings.quickWarm !== false;
+  $('#set-quick-warm').disabled = settings.siteSync === false;
   renderClips(); renderCoach();
 }
 function setSetting(key, value) { settings[key] = value; applySettings(); window.api.setSetting(key, value); }
@@ -530,6 +535,8 @@ $('#btn-voice-test').onclick = () => say('Compra completa. Fuzil, colete e grana
 $('#set-net').onchange = (e) => setSetting('net', e.target.checked);
 $('#set-net-host').onchange = (e) => setSetting('netHost', e.target.value.trim() || '1.1.1.1');
 $('#set-auto-update').onchange = (e) => setSetting('autoUpdate', e.target.checked);
+$('#set-site').onchange = (e) => setSetting('siteSync', e.target.checked);
+$('#set-quick-warm').onchange = (e) => setSetting('quickWarm', e.target.checked);
 window.api.onSettings((s) => { settings = { ...s }; applySettings(); });
 $('#set-autostart').onchange = async (e) => { $('#set-autostart').checked = await window.api.setAutostart(e.target.checked); };
 $('#btn-check-update').onclick = async () => {
@@ -612,7 +619,7 @@ async function renderEvolution() {
   $('#evo-empty').hidden = !empty; $('#evo-empty').textContent = empty;
   $('#evo-chart-card').hidden = !evo.hasKd;
   $('#evo-maps-card').hidden = !evo.maps.length;
-  drawKd(); drawPlay(); renderMaps(); renderRecords(); renderGoals(); renderWeek(); renderEvoCoach();
+  drawKd(); drawPlay(); renderMaps(); renderRecords(); renderGoals(); renderPageGoals(); renderWeek(); renderEvoCoach();
   $('#evo-src').textContent = evo.games.length ? 'Partidas do modo ao vivo e as anotadas na página do Claude.' : '';
 }
 $('#evo-game').onchange = (e) => { evoGame = e.target.value || null; renderEvolution(); };
@@ -691,6 +698,31 @@ function renderGoals() {
     $('#evo-goals').appendChild(el);
   });
 }
+// Metas escritas na página do Claude: o app mostra, marca e cria (a página guarda).
+function renderPageGoals() {
+  const list = evo.pageGoals || [], box = $('#page-goals');
+  $('#page-goals-box').hidden = !list.length; $('#page-goal-form').hidden = !evo.game;
+  box.replaceChildren(...list.map((g) => {
+    const l = document.createElement('label'), cb = document.createElement('input'), sp = document.createElement('span');
+    cb.type = 'checkbox'; cb.checked = Boolean(g.done); l.className = g.done ? 'done' : ''; sp.textContent = g.text;
+    cb.onchange = async () => {
+      cb.disabled = true; $('#page-goal-msg').textContent = 'Salvando na página do Claude...';
+      const ok = await window.api.pageGoalDone(evo.game, g.id, cb.checked).catch(() => false);
+      $('#page-goal-msg').textContent = ok ? '' : 'Não consegui falar com a página do Claude agora. Tente de novo.';
+      if (!ok) { cb.checked = !cb.checked; cb.disabled = false; }
+    };
+    l.append(cb, sp); return l;
+  }));
+}
+$('#page-goal-form').onsubmit = async (e) => {
+  e.preventDefault();
+  const text = $('#page-goal-text').value.trim();
+  if (!text || !evo.game) return;
+  $('#page-goal-msg').textContent = 'Criando na página do Claude...';
+  const ok = await window.api.pageGoalAdd(evo.game, text).catch(() => false);
+  $('#page-goal-msg').textContent = ok ? '' : 'Não consegui falar com a página do Claude agora. Tente de novo.';
+  if (ok) $('#page-goal-text').value = '';
+};
 $('#goal-type').onchange = (e) => { $('#goal-target').value = GOAL_DEFAULT[e.target.value]; };
 $('#goal-form').onsubmit = async (e) => {
   e.preventDefault();

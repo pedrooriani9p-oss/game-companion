@@ -10,6 +10,7 @@
   <!-- Ícones (traço simples, herdam a cor do texto) -->
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
     <symbol id="i-camera" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></symbol>
     <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8z"/></symbol>
     <symbol id="i-shrink" viewBox="0 0 24 24"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></symbol>
     <symbol id="i-expand" viewBox="0 0 24 24"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></symbol>
@@ -50,6 +51,7 @@
         <div class="brand drag"><span class="brand-dot"></span>Game Companion</div>
         <div class="actions no-drag">
           <button id="btn-shot" class="icon-btn" title="Print do placar para o Claude ler (Ctrl+Shift+P)"><svg><use href="#i-camera"/></svg></button>
+          <button id="btn-quick" class="icon-btn" title="Perguntar ao Claude no jogo, com texto e voz (Ctrl+Shift+A)"><svg><use href="#i-bolt"/></svg></button>
           <button id="btn-web" class="icon-btn" title="Abrir o Claude: perguntas, partidas, imagens (Ctrl+Shift+W)"><svg><use href="#i-chat"/></svg></button>
           <button id="btn-compact" class="icon-btn" title="Modo compacto (Ctrl+Shift+M)"><svg><use href="#i-shrink"/></svg></button>
           <button id="btn-hide" class="icon-btn" title="Esconder (Ctrl+Shift+G). O app continua no ícone perto do relógio."><svg><use href="#i-x"/></svg></button>
@@ -213,6 +215,15 @@
             <button class="btn">Criar</button>
           </form>
           <div class="small muted">K/D, vitórias e abates contam as últimas 20 partidas do jogo escolhido lá em cima. A de horas vale para todos os jogos.</div>
+          <div id="page-goals-box" hidden>
+            <div class="card-sub">Metas escritas na página do Claude</div>
+            <div id="page-goals" class="page-goals"></div>
+          </div>
+          <form id="page-goal-form" class="goal-form" hidden>
+            <input id="page-goal-text" maxlength="120" placeholder="Meta escrita, ex.: aprender 3 smokes" aria-label="Nova meta escrita">
+            <button class="btn">Criar</button>
+          </form>
+          <div id="page-goal-msg" class="small muted"></div>
         </div>
 
         <div class="card">
@@ -362,12 +373,19 @@
           <div class="small muted">Funciona no CS2, Valorant e TF2 (partidas que entram sozinhas). Sem o Claude, o app compara a partida com a sua média e dá uma dica rápida. O Claude usa a sua conta do claude.ai pela janela do Claude.</div>
         </div>
         <div class="card">
+          <div class="card-label"><svg><use href="#i-bolt"/></svg>Claude no jogo</div>
+          <label class="set-row">Ligar o app à página do Claude <input id="set-site" type="checkbox" class="switch"></label>
+          <label class="set-row">Deixar o Claude pronto durante o jogo <input id="set-quick-warm" type="checkbox" class="switch"></label>
+          <div class="row"><button id="btn-quick-open" class="btn ghost"><svg><use href="#i-bolt"/></svg>Perguntar agora</button><span class="muted small">Atalho: Ctrl+Shift+A</span></div>
+          <div class="small muted">Ctrl+Shift+A abre uma caixinha por cima do jogo: você pergunta e o Claude responde em texto e em voz, já sabendo o seu mapa, o placar e o seu histórico. Com isto ligado, o app também manda para a página o seu mapa e placar de agora (só os seus números, nada dos outros jogadores), as dicas do coach e as metas. "Pronto durante o jogo" deixa a janela do Claude aberta, escondida, para a resposta sair mais rápido; usa mais memória do PC.</div>
+        </div>
+        <div class="card">
           <div class="card-label"><svg><use href="#i-volume"/></svg>Avisos falados</div>
           <label class="set-row">Falar os avisos em voz alta <input id="set-voice" type="checkbox" class="switch"></label>
           <label class="set-row">Volume <input id="set-voice-volume" type="range" min="10" max="100" step="10"></label>
           <div class="chips toggles" id="set-voice-events">
             <button data-ev="buy">Dica de compra do CS2</button><button data-ev="timers">Timers e lembretes</button><button data-ev="coach">Coach</button>
-            <button data-ev="net">Internet instável</button><button data-ev="goals">Metas batidas</button><button data-ev="fps">Queda de FPS</button>
+            <button data-ev="net">Internet instável</button><button data-ev="goals">Metas batidas</button><button data-ev="fps">Queda de FPS</button><button data-ev="quick">Respostas rápidas do Claude</button>
           </div>
           <div class="row"><button id="btn-voice-test" class="btn ghost"><svg><use href="#i-volume"/></svg>Testar a voz</button><span id="voice-name" class="muted small"></span></div>
         </div>

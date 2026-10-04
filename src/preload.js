@@ -74,6 +74,16 @@ contextBridge.exposeInMainWorld('api', {
   net: () => ipcRenderer.invoke('net'),
   netWatch: (on) => ipcRenderer.invoke('net-watch', on),
   onNet: (cb) => ipcRenderer.on('net', (_e, n) => cb(n)),
+  // Metas da página e pergunta rápida
+  pageGoalDone: (game, id, done) => ipcRenderer.invoke('page-goal-done', game, id, done),
+  pageGoalAdd: (game, text) => ipcRenderer.invoke('page-goal-add', game, text),
+  openQuick: () => ipcRenderer.invoke('open-quick'),
+  quickAsk: (q) => ipcRenderer.invoke('quick-ask', q),
+  quickInfo: () => ipcRenderer.invoke('quick-info'),
+  quickHide: () => ipcRenderer.invoke('quick-hide'),
+  quickClear: () => ipcRenderer.invoke('quick-clear'),
+  quickSize: (h) => ipcRenderer.invoke('quick-size', h),
+  onQuickOpen: (cb) => ipcRenderer.on('quick-open', (_e, i) => cb(i)),
   // Atualização
   onUpdateStatus: (cb) => ipcRenderer.on('update-status', (_e, u) => cb(u)),
   updateRestart: () => ipcRenderer.invoke('update-restart')

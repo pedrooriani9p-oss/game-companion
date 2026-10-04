@@ -10,6 +10,8 @@ Um painel que fica por cima do jogo (overlay) no PC. No topo aparece a capa do j
   - **TF2**: precisa da opção de inicialização `-condebug` na Steam. Mostra abates, mortes, K/D, sequência, arma com mais abates e quem mais te matou. Cada mapa vira uma partida.
   - **Stardew**: lê o save do dia (`SaveGameInfo`): fazenda, data, dinheiro, habilidades e dicas da estação. Avisa quanto ganhou ao dormir e escreve o resumo no Diário.
 - **Coach IA**: no fim de cada partida do CS2, Valorant ou TF2, o app compara a partida com a sua média (K/D, mortes, abates, tiros na cabeça, mapa, sequência) e pede ao Claude uma dica curta para a próxima. A dica aparece no aviso, no HUD, em voz (se ligada) e na aba Jogo, com um botão para conversar mais com o Claude sobre a partida. No começo da partida seguinte, o HUD lembra a dica. Sem o Claude (ou com "Pedir a dica ao Claude" desligado), fica uma dica rápida feita pelo próprio app. Usa só os números do próprio jogador.
+- **Pergunta rápida no jogo**: Ctrl+Shift+A abre uma caixinha por cima do jogo (jogo em janela ou tela cheia sem borda): você escreve, o Claude responde em texto, no HUD e em voz, já sabendo o seu mapa, placar, lado e K/A/D de agora, as suas partidas, metas e anotações. A conversa continua entre uma pergunta e outra, e as respostas são curtas (até 3 frases). Esc fecha; voltar ao jogo também. O app só passa para o Claude o que o jogo mostra para você (o seu mapa, placar, lado e números, nunca os de outros jogadores) e a resposta é feita só com isso e com o que você escreve. Usa a janela do Claude escondida; "Deixar o Claude pronto durante o jogo" (Ajustes) abre essa janela sozinha ao abrir um jogo, para a primeira resposta sair rápido (usa mais memória). Ela fecha sozinha depois de 12 minutos sem uso quando não há jogo aberto.
+- **App e página conversam**: com "Ligar o app à página do Claude" ligado (Ajustes), a página mostra no Início o jogo que você está jogando agora (mapa, placar, números) e o Claude passa a considerar isso nas respostas; as dicas do coach vão para o Início da página; as metas do app (K/D, vitórias, horas...) aparecem na página, com a barra de progresso, junto com as metas escritas lá; e, na aba Evolução do app, as metas escritas na página aparecem para marcar ou criar. Desligando, nada disso é enviado.
 - **Evolução**: histórico de todas as partidas (as do modo ao vivo e as anotadas na janela do Claude, à mão ou pelo print do placar), por jogo e por período (7 dias, 30 dias ou tudo). Mostra partidas, % de vitórias, K/D e tempo com a comparação com o período anterior, um gráfico de K/D por partida com a média das últimas 5, tempo de jogo por dia, mapas com o seu melhor e o seu pior, recordes (mais abates, melhor K/D, vitórias seguidas, sessão mais longa), **metas** (K/D, % de vitórias, abates por partida, partidas na semana, limite de horas na semana) com aviso quando bate, e a semana atual contra a passada. O botão "Pedir dicas ao Claude" manda esse resumo para a pergunta do Claude. Toda segunda-feira aparece um aviso com o resumo da semana que passou. O cartão "Dicas do coach" junta as dicas das últimas partidas do jogo.
 - **Turbo**: FPS do jogo (com o PresentMon da Intel, que já vem junto; na primeira vez pode pedir permissão de administrador), uso de CPU, GPU, RAM e VRAM, temperaturas e gráfico dos últimos 2 minutos. **O que está pesando**: os programas que mais usam o PC agora, com um botão para fechar (Windows, drivers, antivírus, Steam e anti-cheats ficam de fora). **Quedas de FPS**: quando o FPS cai, o app anota a hora e o motivo provável (programa pesado, placa de vídeo ou processador no limite, memória cheia, PC quente) e avisa. Também avisa quando o PC esquenta, liga o plano **Alto desempenho** do Windows enquanto joga (e volta ao normal depois) e mostra o FPS médio de cada sessão. **Internet**: ping, perda de pacotes e oscilação no último minuto, até a internet (1.1.1.1, ou o endereço escolhido em Ajustes) e até o seu roteador, com um gráfico e o diagnóstico (falha no Wi-Fi de casa ou na internet). Avisa quando a conexão fica instável durante o jogo.
 - **HUD no jogo**: um mini painel por cima do jogo que deixa os cliques passarem, com FPS, CPU e GPU, ping, tempo de sessão, relógio, o próximo timer, a dica do coach e, no CS2, placar, dinheiro e uma **dica de compra** no começo da rodada (compra completa, eco ou force, pela sua economia). Escolha o canto e o que aparece em Ajustes. Ctrl+Shift+H mostra ou esconde.
@@ -26,7 +28,7 @@ Os avisos (partida registrada, morte no Minecraft, dia salvo no Stardew, print d
 
 ![Evolução](screenshots/evolucao.png) ![Metas e semana](screenshots/semana.png) ![Turbo](screenshots/turbo.png) ![Jogo](screenshots/jogo.png)
 
-![HUD no jogo](screenshots/hud.png)
+![HUD no jogo](screenshots/hud.png) ![Pergunta rápida](screenshots/pergunta-rapida.png) ![Metas da página no app](screenshots/metas-pagina.png) ![Ajustes do Claude no jogo](screenshots/ajustes-claude.png)
 
 ## Atalhos
 
@@ -38,6 +40,7 @@ Os avisos (partida registrada, morte no Minecraft, dia salvo no Stardew, print d
 | Ctrl+Shift+W | Abrir a janela do Claude dentro do app (perguntas, partidas, imagens com dicas) já no jogo detectado |
 | Ctrl+Shift+P | Tirar print da tela e mandar para a leitura do placar na janela do Claude |
 | Ctrl+Shift+H | Mostrar ou esconder o HUD no jogo |
+| Ctrl+Shift+A | Pergunta rápida ao Claude: caixinha por cima do jogo, resposta em texto e voz |
 | Ctrl+Shift+C | Salvar um clipe com os últimos segundos (com os clipes ligados) |
 
 Arraste o painel pelo título para mudar de lugar.
@@ -68,7 +71,7 @@ Os dados (anotações, horas, lembretes) ficam em `%APPDATA%\game-companion\data
 
 ## Testes
 
-`npm test` roda os testes da lógica (detecção de jogo, Steam, Epic, GOG, janela em primeiro plano, CS2 ao vivo e dica de compra, modos ao vivo, Evolução e metas, coach, ping e perda de pacotes, Turbo, galeria e duração dos clipes, atualização, armazenamento).
+`npm test` roda os testes da lógica (detecção de jogo, Steam, Epic, GOG, janela em primeiro plano, CS2 ao vivo e dica de compra, modos ao vivo, Evolução e metas, coach, ping e perda de pacotes, Turbo, galeria e duração dos clipes, atualização, armazenamento, ligação com a página: o que vai ao vivo, quando e como limpar a resposta).
 
 ## Próximos passos possíveis
 

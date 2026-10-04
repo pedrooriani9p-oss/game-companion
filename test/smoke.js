@@ -517,4 +517,72 @@ const turbo = require('../src/turbo');
   assert.strictEqual(buyAdvice({ mode: 'competitive', money: 800, team: 'T', round: 0, phase: 'live' }).say, 'Rodada de pistola');
 }
 
+// ---------- Ligação com a página do Claude ----------
+{
+  const b = require('../src/siteBridge');
+  const st = { map: 'de_mirage', mapLabel: 'Mirage', mode: 'competitive', phase: 'live', round: 12, ctScore: 7, tScore: 5, team: 'CT', kills: 9, assists: 2, deaths: 6 };
+  assert.deepStrictEqual(b.cs2Snapshot(st), { game: 'cs2', map: 'Mirage', mode: 'Competitivo', score: '7-5', side: 'CT', round: 12, k: 9, a: 2, d: 6 });
+  assert.strictEqual(b.cs2Snapshot({ ...st, team: 'T' }).score, '5-7', 'placar com o seu time primeiro');
+  assert.strictEqual(b.cs2Snapshot({ ...st, team: null }).score, '');
+  assert.strictEqual(b.cs2Snapshot({ ...st, mode: 'deathmatch' }).score, '', 'mata-mata não tem placar de time');
+  assert.strictEqual(b.cs2Snapshot({ ...st, phase: 'gameover' }), null, 'partida acabou: limpa o ao vivo');
+  assert.strictEqual(b.cs2Snapshot(null), null);
+  // só os campos do próprio jogador
+  assert.deepStrictEqual(Object.keys(b.cs2Snapshot(st)).sort(), ['a', 'd', 'game', 'k', 'map', 'mode', 'round', 'score', 'side']);
+  const card = { game: 'valorant', title: 'Valorant ao vivo', sub: 'Em partida · Ascent · Competitivo', stats: [['Placar', '5 x 3'], ['Agente', 'Jett'], ['Mortes', '💀 2']] };
+  assert.deepStrictEqual(b.cardSnapshot('valorant', card), { game: 'valorant', text: 'Em partida · Ascent · Competitivo, Placar 5 x 3, Agente Jett, Mortes 2' });
+  assert.strictEqual(b.cardSnapshot('tf2', card), null, 'cartão de outro jogo');
+  assert.strictEqual(b.cardSnapshot('valorant', { game: 'valorant', sub: '', stats: [] }), null);
+  assert.strictEqual(b.cardSnapshot('valorant', null), null);
+
+  // quando mandar
+  const lp = new b.LivePusher({ minGap: 15000, heartbeat: 90000, retry: 30000 });
+  assert.strictEqual(lp.offer(null, 0), 'skip', 'nada para limpar');
+  const s1 = b.cs2Snapshot(st);
+  assert.strictEqual(lp.offer(s1, 1000), 'now'); lp.commit(s1, 1000);
+  assert.strictEqual(lp.offer(s1, 5000), 'skip', 'igual e recente');
+  const s2 = { ...s1, k: 10 };
+  assert.strictEqual(lp.offer(s2, 5000), 'later', 'só os números mudaram há pouco');
+  assert.strictEqual(lp.offer(s2, 17000), 'now', 'passou o intervalo');
+  lp.commit(s2, 17000);
+  assert.strictEqual(lp.offer({ ...s2, map: 'Inferno' }, 18000), 'now', 'mapa novo vai na hora');
+  assert.strictEqual(lp.offer(s2, 17000 + 91000), 'now', 'batida de coração sem mudança');
+  assert.strictEqual(lp.offer(null, 20000), 'now', 'limpa uma vez');
+  lp.commit(null, 20000);
+  assert.strictEqual(lp.offer(null, 21000), 'skip');
+  lp.fail(30000);
+  assert.strictEqual(lp.offer(s1, 40000), 'skip', 'espera depois de falhar'); assert.strictEqual(lp.offer(s1, 61000), 'now');
+  const tx = { game: 'valorant', text: 'Ascent, Placar 5 x 3' };
+  const lp2 = new b.LivePusher(); lp2.commit(tx, 0);
+  assert.strictEqual(lp2.offer({ ...tx, text: 'Ascent, Placar 6 x 3' }, 2000), 'later');
+
+  // metas
+  const hist = Array.from({ length: 10 }, (_, i) => ({ game: 'cs2', at: 1e12 + i, res: i % 2 ? 'V' : 'D', k: 12, d: 10, a: 1 }));
+  const rows = b.goalRows([{ id: 'g1', game: 'cs2', type: 'kd', target: 1.2 }, { id: 'g2', game: null, type: 'hours', target: 8 }, { id: 'g3', type: 'nada', target: 1 }], hist, [], 1e12 + 100);
+  assert.strictEqual(rows.length, 2, 'meta de tipo desconhecido fica de fora');
+  assert.strictEqual(rows[0].id, 'g1'); assert.strictEqual(rows[0].game, 'cs2'); assert.strictEqual(rows[0].valueText, '1,20'); assert.strictEqual(rows[0].done, true); assert.strictEqual(rows[0].pct, 100); assert.strictEqual(rows[0].higher, true);
+  assert.strictEqual(rows[1].higher, false); assert.strictEqual(rows[1].game, null);
+  assert.deepStrictEqual(b.cleanPageGoals({ cs2: [{ id: 1, text: 'K/D 1,2', done: true }, { text: 'sem id' }, null], 'x y': [{ id: '1', text: 'a' }], r6: [] }), { cs2: [{ id: '1', text: 'K/D 1,2', done: true }] });
+  assert.deepStrictEqual(b.cleanPageGoals(null), {});
+
+  // resposta para ler e ouvir
+  assert.strictEqual(b.cleanAnswer('## Dica\n- **Compre** o fuzil 🔫\n- Use `smoke`.\n1. Jogue junto'), 'Dica Compre o fuzil Use smoke. Jogue junto');
+  assert.strictEqual(b.cleanAnswer('Jogue em *dupla* e fale com o time.'), 'Jogue em dupla e fale com o time.');
+  assert.strictEqual(b.cleanAnswer('Mapa de_mirage: segure o meio.'), 'Mapa de_mirage: segure o meio.', 'não mexe em sublinhado de nome');
+  const longTxt = `${'Primeira frase longa e boa. '.repeat(30)}fim`;
+  const cutTxt = b.cleanAnswer(longTxt, 200);
+  assert(cutTxt.length <= 200 && cutTxt.endsWith('.'), 'corta no fim de uma frase');
+  assert.strictEqual(b.cleanAnswer(null), '');
+
+  // conversa da pergunta rápida
+  const qc = new b.QuickChat({ ttl: 1000, maxTurns: 4 });
+  assert.deepStrictEqual(qc.turns('cs2', 0), []);
+  qc.add('cs2', 'p1', 'r1', 0); qc.add('cs2', 'p2', 'r2', 100); qc.add('cs2', 'p3', 'r3', 200);
+  assert.deepStrictEqual(qc.turns('cs2', 300).map((t) => t.content), ['p2', 'r2', 'p3', 'r3'], 'guarda só as últimas trocas');
+  assert.deepStrictEqual(qc.turns('valorant', 300), [], 'outro jogo começa limpo');
+  assert.deepStrictEqual(qc.turns('cs2', 5000), [], 'esquece depois de um tempo parado');
+  qc.add('valorant', 'q', 'a', 6000); assert.strictEqual(qc.turns('valorant', 6001).length, 2);
+  assert(b.quickError('not_granted').includes('Ctrl+Shift+W') && b.quickError('xyz').length > 10);
+}
+
 console.log('OK: todos os testes passaram');

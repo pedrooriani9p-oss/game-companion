@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
+  <title>Pergunta rápida</title>
+  <link rel="stylesheet" href="quick.css">
+</head>
+<body>
+  <div id="box" role="dialog" aria-label="Pergunta rápida ao Claude">
+    <div id="head">
+      <i id="dot"></i><b id="game">Pergunta rápida</b><span id="line"></span>
+      <button id="clear" type="button" title="Começar uma conversa nova">Limpar</button>
+      <button id="x" type="button" title="Fechar (Esc)" aria-label="Fechar">✕</button>
+    </div>
+    <div id="log" aria-live="polite"></div>
+    <div id="chips"></div>
+    <form id="form" autocomplete="off">
+      <input id="q" maxlength="500" placeholder="Pergunte ao Claude (Enter envia, Esc fecha)" aria-label="Pergunta">
+      <button id="go" type="submit">Enviar</button>
+    </form>
+  </div>
+  <script src="quick.js"></script>
+</body>
+</html>

@@ -19,6 +19,7 @@ const turbo = require('./turbo');
 const coach = require('./coach');
 const netLib = require('./net');
 const clipsLib = require('./clips');
+const bridge = require('./siteBridge');
 const { fixDuration } = require('./webm');
 const { fixMp4Duration, mp4MediaDuration } = require('./mp4');
 const path = require('path');
@@ -244,6 +245,8 @@ function onGameChanged() {
   syncFps(); syncLive(); syncHud(); syncClips(); syncPower(); syncNet();
   drops.reset(); turboDrops = []; send('turbo-drop', null);
   hudCoach = null;
+  liveSync();
+  if (currentGame && siteOn() && store.state.settings.quickWarm !== false) setTimeout(() => { if (currentGame && !claudeWin) { openClaude({ show: false }); touchBridge(); } }, 20000);
   if (currentGame) { const id = currentGame.id; setTimeout(() => { if (currentGame && currentGame.id === id) coachRemind(id); }, 8000); }
 }
 
@@ -273,6 +276,7 @@ function setCompact(on) {
 
 // ---------- Janela do Claude (versão com perguntas, placar e imagens) ----------
 let claudeWin = null;
+let claudeUserShown = false;   // o Pedro abriu a janela: ela não fecha sozinha
 // Jogos fora da lista vão como #x-<nome>~<Nome> e a página cria o jogo na hora.
 const webUrl = () => (!currentGame ? WEB_URL : currentGame.auto ? `${WEB_URL}#${currentGame.id}~${encodeURIComponent(currentGame.name)}` : `${WEB_URL}#${currentGame.id}`);
 const AUTH_HOSTS = /(^|\.)(claude\.ai|anthropic\.com|accounts\.google\.com|google\.com|appleid\.apple\.com|apple\.com)$/;
@@ -281,6 +285,7 @@ function openClaude({ focus = true, show = true } = {}) {
     const want = webUrl();
     // Só troca de jogo quando o Pedro abre a janela; o envio escondido de partidas não mexe na página dele.
     if (!show) return claudeWin;
+    claudeUserShown = true;
     if (claudeWin.webContents.getURL().split('#')[0] === WEB_URL && claudeWin.webContents.getURL() !== want) claudeWin.loadURL(want);
     if (focus) { claudeWin.show(); claudeWin.focus(); } else claudeWin.showInactive();
     return claudeWin;
@@ -297,9 +302,10 @@ function openClaude({ focus = true, show = true } = {}) {
     if (/^https?:\/\//.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
+  claudeUserShown = Boolean(show);
   claudeWin.once('ready-to-show', () => { if (!show) return; if (focus) claudeWin.show(); else claudeWin.showInactive(); });
-  claudeWin.webContents.on('did-finish-load', () => { deliverPending(); });
-  claudeWin.on('closed', () => { claudeWin = null; });
+  claudeWin.webContents.on('did-finish-load', () => { onClaudePageLoad(); });
+  claudeWin.on('closed', () => { claudeWin = null; bridgeFrame = null; claudeUserShown = false; });
   claudeWin.loadURL(webUrl());
   return claudeWin;
 }
@@ -457,6 +463,7 @@ function startCs2Server() {
       if (state && state.roundPhase === 'freezetime' && cs2RoundPhase !== 'freezetime' && state.buy) speak('buy', state.buy.say);
       if (state && cs2Phase && state.phase !== cs2Phase && (state.phase === 'warmup' || cs2Phase === 'gameover')) coachRemind('cs2');
       cs2RoundPhase = state ? state.roundPhase : null; cs2Phase = state ? state.phase : null;
+      liveSync();
       if (match) onCs2Match(match);
       // Clipe sozinho: 3 ou mais abates na mesma rodada.
       const rk = state && state.roundKills;
@@ -484,24 +491,118 @@ function registerMatch(game, m, { toast = true } = {}) {
   deliverPending();
 }
 // Manda as partidas guardadas para a página do Claude (onde ficam o histórico e as análises).
-let delivering = false;
+let delivering = false, redeliver = false;
 let quitting = false;
 app.on('before-quit', () => { quitting = true; });
 async function deliverPending() {
-  if (quitting || delivering || !(store.state.pendingMatches || []).length) return;
+  const st = store.state, hasMatches = (st.pendingMatches || []).length > 0, hasCoach = siteOn() && (st.pendingCoach || []).length > 0;
+  if (quitting || !(hasMatches || hasCoach)) return;
+  if (delivering) { redeliver = true; return; }   // chegou coisa nova no meio do envio: manda de novo quando acabar
   delivering = true;
   try {
     const w = openClaude({ show: false });
-    const frame = await findAppFrame(w.webContents, 30000, 'gcAddMatch');
+    touchBridge();
+    const frame = await findAppFrame(w.webContents, 30000, hasMatches ? 'gcAddMatch' : 'gcAddCoach');
     if (!frame) return;
-    for (const m of [...store.state.pendingMatches]) {
+    for (const m of [...(st.pendingMatches || [])]) {
       const ok = await frame.executeJavaScript(`window.gcAddMatch(${JSON.stringify(m)})`).catch(() => false);
       if (!ok) break;
-      store.state.pendingMatches = store.state.pendingMatches.filter((x) => x.at !== m.at);
+      st.pendingMatches = st.pendingMatches.filter((x) => x.at !== m.at);
       store.save();
     }
-  } finally { delivering = false; }
+    // Dicas do coach e metas também vão para a página (a página mostra no Início).
+    if (siteOn()) {
+      for (const c of [...(st.pendingCoach || [])]) {
+        const ok = await frame.executeJavaScript(`typeof window.gcAddCoach === "function" && window.gcAddCoach(${JSON.stringify(c)})`).catch(() => false);
+        if (!ok) break;
+        st.pendingCoach = st.pendingCoach.filter((x) => x.at !== c.at);
+        store.save();
+      }
+      await pushGoals(frame);
+    }
+  } finally {
+    delivering = false;
+    if (redeliver) { redeliver = false; setTimeout(deliverPending, 500); }
+  }
 }
+
+// ---------- Ligação com a página: jogo de agora, dicas do coach, metas e pergunta rápida ----------
+// Só vai para a página o que o jogo mostra para o próprio jogador (o seu mapa, placar, lado e números).
+const siteOn = () => store.state.settings.siteSync !== false;
+const sitePusher = new bridge.LivePusher();
+let bridgeFrame = null, lastBridgeUse = 0, goalsSent = '', liveBusy = false, liveLaterT = null;
+const touchBridge = () => { lastBridgeUse = Date.now(); };
+// Quadro da página que tem a função pedida. Sem create, não abre a janela do Claude só por isso (ela pesa no PC).
+async function webFrame(fn, { create = false, timeout = 3000 } = {}) {
+  if (!create && !(claudeWin && !claudeWin.isDestroyed())) return null;
+  const w = openClaude({ show: false });
+  touchBridge();
+  if (bridgeFrame && !bridgeFrame.detached) {
+    try { if (await bridgeFrame.executeJavaScript(`typeof window.${fn} === "function"`)) return bridgeFrame; } catch {}
+  }
+  bridgeFrame = await findAppFrame(w.webContents, timeout, fn);
+  return bridgeFrame;
+}
+// Janela do Claude (re)carregada: a página começa do zero, então manda tudo de novo.
+function onClaudePageLoad() {
+  bridgeFrame = null; goalsSent = ''; sitePusher.commit(null, 0);
+  deliverPending();
+  if (!siteOn()) return;
+  (async () => {
+    const f = await webFrame('gcSetGoals', { timeout: 40000 });
+    if (!f) return;
+    await pushGoals(f, { force: true });
+    liveSync();
+  })().catch(() => {});
+}
+function liveSnapshot() {
+  if (!currentGame) return null;
+  return currentGame.id === 'cs2' ? bridge.cs2Snapshot(cs2.state) : bridge.cardSnapshot(currentGame.id, liveCard);
+}
+async function liveSync() {
+  // Sem a janela do Claude aberta não há para onde mandar (e ela não abre só por isso).
+  if (quitting || liveBusy || !store || !siteOn() || !claudeWin || claudeWin.isDestroyed()) return;
+  const snap = liveSnapshot(), act = sitePusher.offer(snap, Date.now());
+  if (act === 'skip') return;
+  if (act === 'later') { if (!liveLaterT) liveLaterT = setTimeout(() => { liveLaterT = null; liveSync(); }, 4000); return; }
+  liveBusy = true;
+  try {
+    const f = await webFrame('gcSetLive');
+    const ok = f ? await f.executeJavaScript(`window.gcSetLive(${JSON.stringify(snap)})`).catch(() => false) : false;
+    if (ok) sitePusher.commit(snap, Date.now()); else sitePusher.fail(Date.now());
+  } finally { liveBusy = false; }
+}
+// Dica do coach: vai para a página junto com as partidas.
+function queueCoach(tip) {
+  if (!siteOn() || !tip) return;
+  const text = tip.ai || (tip.local && tip.local.text);
+  if (!text) return;
+  const res = tip.match && RES[tip.match.res];
+  store.state.pendingCoach = [...(store.state.pendingCoach || []).filter((x) => x.at !== tip.at), { at: tip.at, game: tip.game, text: String(text).slice(0, 600), title: `${nameOfGame(tip.game)}${res ? ` · ${res}` : ''}`.slice(0, 80) }].slice(-20);
+  store.save();
+  deliverPending();
+}
+// Metas medidas pelo app (K/D, vitórias, horas...) aparecem na página, junto com as metas escritas lá.
+async function pushGoals(frame, { force = false } = {}) {
+  if (!siteOn()) return false;
+  const body = JSON.stringify(bridge.goalRows(store.state.goals, store.state.history, store.state.sessions, Date.now()));
+  if (!force && body === goalsSent) return true;
+  const f = frame || await webFrame('gcSetGoals');
+  if (!f) return false;
+  const ok = await f.executeJavaScript(`typeof window.gcSetGoals === "function" && window.gcSetGoals(${body})`).catch(() => false);
+  if (ok) goalsSent = body;
+  return Boolean(ok);
+}
+// Metas escritas na página: o app mostra e marca na aba Evolução.
+async function refreshPageGoals(frame) {
+  const raw = await frame.executeJavaScript('typeof window.gcGetGoals === "function" ? window.gcGetGoals() : null').catch(() => null);
+  if (!raw || typeof raw !== 'object') return false;
+  const next = bridge.cleanPageGoals(raw), changed = JSON.stringify(next) !== JSON.stringify(store.state.pageGoals || {});
+  store.state.pageGoals = next;
+  if (changed) store.save();
+  return changed;
+}
+const validGameId = (id) => /^[a-z0-9-]{1,48}$/.test(String(id || ''));
 
 
 // ---------- Modo ao vivo de outros jogos (Valorant, Minecraft, TF2, Stardew) ----------
@@ -538,7 +639,7 @@ function getJson(url, { headers = {}, insecure = false, timeout = 8000 } = {}) {
 
 let liveMod = null;   // { id, stop(), card(), finish(ms) }
 let liveCard = null;
-function sendLive() { liveCard = liveMod ? liveMod.card() : null; send('live', liveCard); }
+function sendLive() { liveCard = liveMod ? liveMod.card() : null; send('live', liveCard); liveSync(); }
 function syncLive() {
   const id = currentGame && currentGame.id;
   if (liveMod && liveMod.id === id) return;
@@ -953,12 +1054,17 @@ async function syncWebHistory({ force = false } = {}) {
         if (store.addMatch(game, clean)) added++;
       }
     }
-    if (added) { store.save(); send('history-changed'); }
+    // As metas escritas na página aparecem na aba Evolução; as do app vão para a página.
+    const goalsChanged = await refreshPageGoals(frame);
+    if (siteOn()) await pushGoals(frame);
+    if (added || goalsChanged) { store.save(); send('history-changed'); }
     return true;
   } catch { return false; }
 }
 function evolutionFor(game, days) {
-  return stats.evolution({ history: store.state.history, sessions: store.state.sessions, goals: store.state.goals || [], game, days, nameOf: nameOfGame });
+  const ev = stats.evolution({ history: store.state.history, sessions: store.state.sessions, goals: store.state.goals || [], game, days, nameOf: nameOfGame });
+  ev.pageGoals = (ev.game && (store.state.pageGoals || {})[ev.game]) || [];
+  return ev;
 }
 // Manda o relatório para a pergunta do Claude; sem a página pronta, deixa o texto copiado.
 async function askClaude(game, text) {
@@ -1346,6 +1452,7 @@ function showCoach(tip) {
   speak('coach', text);
   send('coach', coachInfo());
   hudTick();
+  queueCoach(tip);
 }
 // Lembrete da última dica no começo da próxima partida (jogo aberto de novo, nova partida do CS2 ou do Valorant).
 function coachRemind(game) {
@@ -1363,6 +1470,80 @@ function coachAsk(id) {
   const ctx = coach.context(match, store.state.history, t.game);
   return askClaude(t.game, coach.followUp(match, ctx, nameOfGame(t.game), t.ai || t.local.text));
 }
+
+// ---------- Pergunta rápida (Ctrl+Shift+A): caixinha por cima do jogo; o Claude responde em texto e voz ----------
+let quickWin = null, quickBusy = false, quickSize = 170;
+const quickChat = new bridge.QuickChat();
+// O jogo da pergunta: o que está aberto ou, se o Pedro acabou de fechar, o da última sessão.
+function quickGame() {
+  if (currentGame) return currentGame;
+  const list = store.state.sessions || [], s = list[list.length - 1];
+  if (!s || Date.now() - (s.end || Date.now()) > 6 * 3600000) return null;
+  return games.find((g) => g.id === s.gameId) || (/^x-[a-z0-9-]{1,40}$/.test(s.gameId) ? { id: s.gameId, name: nameOfGame(s.gameId) } : null);
+}
+function quickInfo() {
+  const g = quickGame(), snap = liveSnapshot();
+  const line = snap ? (snap.text || [snap.map, snap.mode, snap.score && `placar ${snap.score}`, snap.k != null && `${snap.k}/${snap.a ?? '?'}/${snap.d ?? '?'}`].filter(Boolean).join(' · ')) : '';
+  return { game: g ? g.id : null, gameName: g ? nameOfGame(g.id) : null, line, turns: g ? quickChat.turns(g.id) : [], busy: quickBusy, visible: Boolean(quickWin && !quickWin.isDestroyed() && quickWin.isVisible()), ready: Boolean(claudeWin && !claudeWin.isDestroyed()), voice: Boolean(store.state.settings.voice) };
+}
+function placeQuick(height = quickSize) {
+  if (!quickWin || quickWin.isDestroyed()) return;
+  quickSize = Math.max(120, Math.min(560, Math.ceil(height)));
+  const area = screen.getPrimaryDisplay().bounds, W = 520;
+  quickWin.setBounds({ x: Math.round(area.x + (area.width - W) / 2), y: Math.round(area.y + area.height - quickSize - 90), width: W, height: quickSize });
+}
+function quickWindow() {
+  if (quickWin && !quickWin.isDestroyed()) return quickWin;
+  quickWin = new BrowserWindow({
+    width: 520, height: quickSize, frame: false, transparent: true, resizable: false, skipTaskbar: true, alwaysOnTop: true, show: false, hasShadow: false,
+    webPreferences: { preload: path.join(__dirname, 'preload.js'), backgroundThrottling: false },
+  });
+  quickWin.setAlwaysOnTop(true, 'screen-saver');
+  quickWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  quickWin.loadFile(path.join(__dirname, 'renderer', 'quick.html'));
+  // Voltou para o jogo: a caixinha some (a resposta ainda sai no HUD e na voz).
+  quickWin.on('blur', () => setTimeout(() => { if (quickWin && !quickWin.isDestroyed() && quickWin.isVisible() && !quickWin.isFocused()) quickWin.hide(); }, 250));
+  quickWin.on('closed', () => { quickWin = null; });
+  return quickWin;
+}
+function openQuick() {
+  if (!siteOn()) { notify('Ligue "Ligar o app à página do Claude" nos Ajustes para usar a pergunta rápida.'); return; }
+  const w = quickWindow();
+  placeQuick();
+  const show = () => { if (w.isDestroyed()) return; w.show(); w.focus(); w.webContents.send('quick-open', quickInfo()); };
+  if (w.webContents.isLoading()) w.webContents.once('did-finish-load', show); else show();
+  // O Claude demora a abrir da primeira vez: começa agora, para estar pronto quando a pergunta sair.
+  if (!claudeWin) { openClaude({ show: false }); touchBridge(); }
+}
+const toggleQuick = () => (quickWin && !quickWin.isDestroyed() && quickWin.isVisible() ? quickWin.hide() : openQuick());
+async function askQuick(question) {
+  const q = String(question || '').trim().slice(0, 500), fail = (error) => ({ error, message: bridge.quickError(error) });
+  if (!q) return fail('empty');
+  if (quickBusy) return fail('busy');
+  const g = quickGame();
+  if (!g) return fail('nogame');
+  quickBusy = true;
+  try {
+    const frame = await webFrame('gcQuick', { create: true, timeout: 45000 });
+    if (!frame) return fail('page');
+    const snap = liveSnapshot();
+    const payload = { game: g.id, name: nameOfGame(g.id), q, history: quickChat.turns(g.id), live: snap && snap.game === g.id ? snap : null };
+    const r = await Promise.race([frame.executeJavaScript(`window.gcQuick(${JSON.stringify(payload)})`).catch(() => ({ error: 'page' })), new Promise((res) => setTimeout(() => res({ error: 'timeout' }), 60000))]);
+    const text = r && r.text ? bridge.cleanAnswer(r.text) : '';
+    if (!text) return fail((r && r.error) || 'empty');
+    quickChat.add(g.id, q, text);
+    hudCoach = { text, until: Date.now() + 40000, label: 'Claude' };
+    hudTick();
+    speak('quick', text);
+    return { text };
+  } finally { quickBusy = false; touchBridge(); }
+}
+// A janela do Claude escondida pesa no PC: sem uso (e sem jogo aberto com ela "pronta"), fecha sozinha.
+setInterval(() => {
+  if (!claudeWin || claudeWin.isDestroyed() || claudeUserShown || delivering || quickBusy) return;
+  const keep = currentGame && siteOn() && store.state.settings.quickWarm !== false;
+  if (!keep && Date.now() - lastBridgeUse > 12 * 60000) claudeWin.destroy();
+}, 60000);
 
 // ---------- Avisos falados (dica de compra, timers, coach, internet, metas) ----------
 let lastSpoken = { text: '', at: 0 };
@@ -1529,6 +1710,7 @@ function buildTrayMenu() {
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Mostrar ou esconder o painel', click: togglePanel },
     { label: 'Abrir o Claude', click: () => openClaude() },
+    { label: 'Perguntar ao Claude no jogo (Ctrl+Shift+A)', click: toggleQuick },
     { label: 'Print do placar', click: captureScoreboard },
     { label: 'Salvar clipe', click: () => saveClip('') },
     { label: 'Mostrar ou esconder o HUD', click: toggleHud },
@@ -1557,6 +1739,7 @@ function registerShortcuts() {
   globalShortcut.register('CommandOrControl+Shift+W', openWeb);
   globalShortcut.register('CommandOrControl+Shift+P', captureScoreboard);
   globalShortcut.register('CommandOrControl+Shift+H', toggleHud);
+  globalShortcut.register('CommandOrControl+Shift+A', toggleQuick);
 }
 // Ctrl+Shift+H: liga o HUD (se estava desligado nos ajustes) ou esconde até o próximo jogo.
 function toggleHud() {
@@ -1587,7 +1770,36 @@ function registerIpc() {
   // Evolução
   ipcMain.handle('evolution', (_e, game, days) => evolutionFor(game || null, [7, 30, 0].includes(days) ? days : 30));
   ipcMain.handle('evo-sync', () => syncWebHistory({ force: Date.now() - lastWebSync > 60000 }));
-  ipcMain.handle('set-goals', (_e, list) => { store.state.goals = cleanGoals(list); store.save(); checkGoals(); return store.state.goals; });
+  ipcMain.handle('set-goals', (_e, list) => {
+    store.state.goals = cleanGoals(list); store.save(); checkGoals();
+    // Meta nova ou apagada: a página fica sabendo (abre a janela do Claude escondida, se precisar).
+    if (siteOn()) webFrame('gcSetGoals', { create: true, timeout: 40000 }).then((f) => f && pushGoals(f)).catch(() => {});
+    return store.state.goals;
+  });
+  // Metas escritas na página (aba Evolução): marcar, criar.
+  ipcMain.handle('page-goal-done', async (_e, game, id, done) => {
+    const g = validGameId(game) && ((store.state.pageGoals || {})[game] || []).find((x) => x.id === String(id));
+    if (!g) return false;
+    const f = await webFrame('gcSetGoalDone', { create: true, timeout: 40000 });
+    const ok = f ? await f.executeJavaScript(`window.gcSetGoalDone(${JSON.stringify(game)}, ${JSON.stringify(String(id))}, ${Boolean(done)})`).catch(() => false) : false;
+    if (ok) { g.done = Boolean(done); store.save(); send('history-changed'); }
+    return Boolean(ok);
+  });
+  ipcMain.handle('page-goal-add', async (_e, game, text) => {
+    const t = String(text || '').trim().slice(0, 120);
+    if (!validGameId(game) || !t) return false;
+    const f = await webFrame('gcAddGoal', { create: true, timeout: 40000 });
+    const ok = f ? await f.executeJavaScript(`window.gcAddGoal(${JSON.stringify(game)}, ${JSON.stringify(t)}, ${JSON.stringify(nameOfGame(game))})`).catch(() => false) : false;
+    if (ok && await refreshPageGoals(f)) send('history-changed');
+    return Boolean(ok);
+  });
+  // Pergunta rápida
+  ipcMain.handle('open-quick', () => openQuick());
+  ipcMain.handle('quick-ask', (_e, q) => askQuick(q));
+  ipcMain.handle('quick-info', () => quickInfo());
+  ipcMain.handle('quick-hide', () => { if (quickWin && !quickWin.isDestroyed()) quickWin.hide(); });
+  ipcMain.handle('quick-clear', () => { quickChat.clear(); return quickInfo(); });
+  ipcMain.handle('quick-size', (_e, h) => placeQuick(Number(h) || quickSize));
   ipcMain.handle('ask-claude', (_e, game, days) => {
     const ev = evolutionFor(game || null, [7, 30, 0].includes(days) ? days : 30);
     return ev.game ? askClaude(ev.game, stats.claudeReport(ev)) : false;
@@ -1620,6 +1832,7 @@ function registerIpc() {
       coach: Boolean, coachAi: Boolean, voice: Boolean, voiceVolume: (v) => Math.max(10, Math.min(100, Math.round(Number(v) || 80))),
       voiceEvents: (v) => Object.fromEntries(Object.keys(store.state.settings.voiceEvents || {}).map((k) => [k, Boolean(v && v[k])])),
       net: Boolean, netHost: (v) => (netLib.hostOk(String(v || '').trim()) ? String(v).trim().slice(0, 100) : '1.1.1.1'), autoUpdate: Boolean,
+      siteSync: Boolean, quickWarm: Boolean,
     };
     if (!allowed[key]) return;
     store.state.settings = { ...store.state.settings, [key]: allowed[key](value) };
@@ -1632,6 +1845,7 @@ function registerIpc() {
     if (['clipSeconds', 'clipQuality'].includes(key) && recWin) { stopRecorder(); syncClips(); }
     if (key === 'net' || key === 'netHost') syncNet();
     if (key === 'autoUpdate' && value) checkUpdate();
+    if (key === 'siteSync') { if (value) { goalsSent = ''; sitePusher.commit(null, 0); liveSync(); } else if (quickWin && !quickWin.isDestroyed()) quickWin.hide(); }
     return store.state.settings;
   });
   // Encaixa o painel num canto da tela onde ele está.
@@ -1705,6 +1919,7 @@ app.whenReady().then(() => {
   setInterval(() => { if (currentGame || (win && win.isVisible())) sampleSystem(); }, 2000);
   setInterval(hudTick, 1000);
   setInterval(() => { checkGoals(); checkDailyLimit(); }, 60000);
+  setInterval(liveSync, 20000);
   setTimeout(weeklyNotice, 30000); setInterval(weeklyNotice, 3600000);
   pollGame();
   setInterval(pollGame, POLL_MS);

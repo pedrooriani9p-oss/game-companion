@@ -99,4 +99,4 @@ function gsiConfig(port, token) {
 `;
 }
 
-module.exports = { Cs2Live, gsiConfig, MAP_TIPS, mapLabel, buyAdvice };
+module.exports = { Cs2Live, gsiConfig, MAP_TIPS, mapLabel, buyAdvice, MODES };
