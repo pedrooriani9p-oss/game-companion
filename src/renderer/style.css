@@ -243,3 +243,70 @@ table.grid tr.worst td:first-child::after { content: ' ▼ pior'; color: var(--d
 .wk-cells b { display: block; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .wk-cells small { display: block; font-size: 10px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #evo-trend b { color: var(--fg); }
+
+/* ---------- Coach ---------- */
+.pill-coach { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: #160f26; background: #b08cff; padding: 2px 7px 2px 5px; border-radius: 20px; }
+.pill-coach svg { width: 12px; height: 12px; stroke-width: 2.2; }
+.card.coach { border-color: rgba(176,140,255,0.35); background: linear-gradient(180deg, rgba(176,140,255,0.09), var(--surface)); }
+.card.coach .card-head { flex-wrap: nowrap; }
+.card.coach .card-head b { overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1 1 auto; font-size: 12px; }
+.card.coach .card-head .muted { margin-left: 0; }
+.coach-text { margin: 2px 0 6px; font-size: 13.5px; line-height: 1.45; }
+.coach-text.thinking { color: var(--muted); }
+.facts { display: flex; flex-wrap: wrap; gap: 4px; } .facts:empty { display: none; }
+.facts span { font-size: 10.5px; padding: 2px 7px; border-radius: 20px; background: rgba(0,0,0,0.25); color: var(--muted); font-variant-numeric: tabular-nums; }
+.coach-actions { margin-bottom: 0; } .coach-actions .btn { font-size: 12px; padding: 5px 10px; }
+.coach-list li { display: block; font-size: 12px; }
+.coach-list .when { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 6px; }
+.coach-list .what { font-weight: 600; }
+.coach-list .why { display: block; color: var(--muted); margin-top: 2px; }
+
+/* ---------- Internet ---------- */
+.net-nums { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 4px 0; }
+.net-nums div { background: rgba(0,0,0,0.22); border-radius: 8px; padding: 5px 6px; display: flex; flex-direction: column; align-items: center; min-width: 0; }
+.net-nums b { font-size: 15px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.net-nums span { font-size: 10px; color: var(--muted); text-align: center; white-space: nowrap; }
+.net-nums b.good { color: var(--accent); } .net-nums b.mid { color: var(--warn); } .net-nums b.bad { color: var(--danger); }
+#net-chart { height: 60px; }
+.net-diag { color: var(--muted); } .net-diag.bad { color: #ff9a9a; } .net-diag.warn { color: var(--warn); } .net-diag.ok { color: var(--accent); }
+input.host { flex: 0 0 130px; text-align: right; }
+
+/* ---------- Galeria de clipes ---------- */
+.gallery { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0; }
+.clip-tile { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 0; overflow: hidden; text-align: left; display: flex; flex-direction: column; min-width: 0; transition: border-color .15s; }
+.clip-tile:hover { border-color: rgba(90,209,160,0.5); }
+.clip-tile .thumb { position: relative; aspect-ratio: 16 / 9; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; color: var(--faint); }
+.clip-tile .thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.clip-tile .thumb > svg { width: 22px; height: 22px; }
+.clip-tile .dur { position: absolute; right: 5px; bottom: 5px; font-size: 10.5px; font-weight: 600; padding: 1px 5px; border-radius: 5px; background: rgba(0,0,0,0.7); font-variant-numeric: tabular-nums; }
+.clip-tile .play { position: absolute; width: 30px; height: 30px; border-radius: 50%; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity .15s; color: #fff; }
+.clip-tile .play svg { width: 13px; height: 13px; fill: currentColor; margin-left: 2px; }
+.clip-tile:hover .play { opacity: 1; }
+.clip-tile .meta { padding: 5px 7px 6px; min-width: 0; }
+.clip-tile .meta b { display: block; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clip-tile .meta small { display: block; font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.center-row { justify-content: center; }
+#btn-clips-tab { margin-top: 2px; }
+
+/* ---------- Player e corte ---------- */
+.player { padding: 10px; align-items: flex-start; }
+.player .sheet { padding: 10px; }
+.player-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.player-head b { flex: 1; min-width: 0; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.player-head .icon-btn { width: 26px; height: 26px; }
+#pl-video { width: 100%; aspect-ratio: 16 / 9; background: #000; border-radius: 8px; display: block; }
+.trim-bar { position: relative; height: 14px; margin: 8px 0 4px; border-radius: 7px; background: rgba(255,255,255,0.08); cursor: pointer; }
+.trim-bar #pl-sel { position: absolute; top: 0; bottom: 0; background: rgba(90,209,160,0.35); border: 1px solid rgba(90,209,160,0.8); border-radius: 7px; }
+.trim-bar #pl-head { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: #fff; border-radius: 2px; box-shadow: 0 0 4px rgba(0,0,0,0.6); }
+.trim-row { display: flex; align-items: center; gap: 6px; font-size: 11.5px; }
+.trim-row span { flex: 1; text-align: center; font-variant-numeric: tabular-nums; }
+.trim-row .btn { padding: 4px 8px; font-size: 11.5px; }
+.player-actions { display: flex; gap: 5px; margin-top: 8px; flex-wrap: wrap; }
+.player-actions .btn { padding: 6px 9px; font-size: 12px; }
+.btn.danger:hover { background: rgba(255,107,107,0.25); border-color: rgba(255,107,107,0.5); }
+.btn:disabled { opacity: .45; cursor: default; filter: none; }
+.pl-progress { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 11.5px; }
+.pl-progress .bar { flex: 1; }
+.update.ready { background: linear-gradient(90deg, #1f6b4c, #2a8a62); border-color: rgba(90,209,160,0.5); }
+#clips-card .card-head, .clips-top .card-head { flex-wrap: nowrap; }
+#clips-title, #gal-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 12.5px; }

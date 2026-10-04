@@ -1,10 +1,11 @@
-const { app, BrowserWindow, globalShortcut, ipcMain, shell, screen, desktopCapturer, clipboard, Tray, Menu, nativeImage, net } = require('electron');
+const { app, BrowserWindow, globalShortcut, ipcMain, shell, screen, desktopCapturer, clipboard, Tray, Menu, nativeImage, net, protocol } = require('electron');
+const { Readable } = require('stream');
 const http = require('http');
 const crypto = require('crypto');
 const { execFile, execFileSync, spawn } = require('child_process');
 const os = require('os');
 const { FpsMeter } = require('./fps');
-const { checkLatest } = require('./updater');
+const { checkLatest, download, verify } = require('./updater');
 const { identifyForeground, buildLibrary, slug } = require('./detect');
 const { Cs2Live, gsiConfig } = require('./cs2');
 const https = require('https');
@@ -15,6 +16,9 @@ const { Tf2Console, personaFromLoginUsers } = require('./live/tf2');
 const stardew = require('./live/stardew');
 const stats = require('./stats');
 const turbo = require('./turbo');
+const coach = require('./coach');
+const netLib = require('./net');
+const clipsLib = require('./clips');
 const { fixDuration } = require('./webm');
 const { fixMp4Duration, mp4MediaDuration } = require('./mp4');
 const path = require('path');
@@ -35,6 +39,10 @@ const scaled = (sz) => ({ width: Math.round(sz.width * zoom()), height: Math.rou
 const UPDATE_REPO = 'pedrooriani9p-oss/game-companion';
 // O login do Google recusa navegadores "embutidos"; sem a marca do Electron a janela do Claude se apresenta como Chrome.
 app.userAgentFallback = app.userAgentFallback.replace(/\s(Electron|game-companion)\/\S+/gi, '');
+// gcclip:// serve os clipes e as miniaturas para o painel (com pedaços do arquivo, para o player avançar).
+protocol.registerSchemesAsPrivileged([{ scheme: 'gcclip', privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true, corsEnabled: true } }]);
+// O corte de clipes toca o vídeo por baixo dos panos: sem isso o Chromium pausa vídeo em janela escondida.
+app.commandLine.appendSwitch('disable-background-media-suspend');
 
 let win;
 let store;
@@ -58,7 +66,9 @@ function createWindow({ hidden = false } = {}) {
     alwaysOnTop: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
-      backgroundThrottling: false
+      backgroundThrottling: false,
+      // O corte de clipes toca o vídeo sozinho, sem clique no próprio vídeo.
+      autoplayPolicy: 'no-user-gesture-required'
     }
   });
   // Nível "screen-saver" fica por cima de jogos em tela cheia sem borda.
@@ -231,8 +241,10 @@ async function pollGame() {
 // Tudo que muda quando o jogo muda (ou fecha).
 function onGameChanged() {
   send('game-changed', currentGame);
-  syncFps(); syncLive(); syncHud(); syncClips(); syncPower();
+  syncFps(); syncLive(); syncHud(); syncClips(); syncPower(); syncNet();
   drops.reset(); turboDrops = []; send('turbo-drop', null);
+  hudCoach = null;
+  if (currentGame) { const id = currentGame.id; setTimeout(() => { if (currentGame && currentGame.id === id) coachRemind(id); }, 8000); }
 }
 
 function send(channel, payload) {
@@ -408,6 +420,7 @@ const cs2 = new Cs2Live();
 let cs2Seen = 0;
 let cs2Status = 'off';
 let cs2RoundKills = 0;
+let cs2RoundPhase = null, cs2Phase = null;
 function cs2Token() {
   if (!store.state.cs2Token) { store.state.cs2Token = crypto.randomBytes(12).toString('hex'); store.save(); }
   return store.state.cs2Token;
@@ -440,6 +453,10 @@ function startCs2Server() {
       cs2Seen = Date.now(); cs2Status = 'live';
       const { state, match } = cs2.update(p);
       send('cs2', state);
+      // Começo da rodada (tempo de compra): a dica de compra em voz. Nova partida: lembrete do coach.
+      if (state && state.roundPhase === 'freezetime' && cs2RoundPhase !== 'freezetime' && state.buy) speak('buy', state.buy.say);
+      if (state && cs2Phase && state.phase !== cs2Phase && (state.phase === 'warmup' || cs2Phase === 'gameover')) coachRemind('cs2');
+      cs2RoundPhase = state ? state.roundPhase : null; cs2Phase = state ? state.phase : null;
       if (match) onCs2Match(match);
       // Clipe sozinho: 3 ou mais abates na mesma rodada.
       const rk = state && state.roundKills;
@@ -461,7 +478,7 @@ function registerMatch(game, m, { toast = true } = {}) {
   store.state.pendingMatches = [...(store.state.pendingMatches || []), { game, ...m }];
   const added = !m.prog && store.addMatch(game, { ...m, src: 'pc' });
   store.save();
-  if (added) { send('history-changed'); checkGoals(game); }
+  if (added) { send('history-changed'); checkGoals(game); coachAfterMatch(game, m); }
   const nums = m.k == null ? '' : m.a == null ? `, ${m.k} abates e ${m.d} mortes` : `, ${m.k}/${m.a}/${m.d}`;
   if (toast) notify(`🏁 Partida registrada: ${RES[m.res] || 'sem resultado'}${nums}. ${m.note.split(' (')[0]}`);
   deliverPending();
@@ -611,6 +628,7 @@ function valorantLive(id) {
       const names = await valNames();
       const { state: s, ended } = vl.update(pres ? valorant.decodePresence(pres.private) : null, names.maps);
       if (s && state && s.map !== state.map) tip = 0;
+      if (s && s.loop === 'INGAME' && state && state.loop !== 'INGAME') coachRemind('valorant');
       state = s; msg = s ? '' : 'Entre no Valorant para ver o mapa e o placar aqui.';
       if (s && s.loop === 'INGAME' && !agent && Date.now() - agentTry > 60000) { agentTry = Date.now(); fetchAgent(); }
       if (s && s.loop !== 'INGAME') { agent = null; agentFor = null; agentTry = 0; }
@@ -964,7 +982,7 @@ function checkGoals(game = null) {
     const p = stats.goalProgress(g, store.state.history, store.state.sessions, now);
     if (!p) continue;
     const where = g.game ? ` no ${nameOfGame(g.game)}` : '';
-    if (p.done && !g.doneAt) { g.doneAt = now; changed = true; notify(`🎯 Meta batida${where}: ${p.label} chegou a ${p.valueText} (meta ${p.targetText}).`); }
+    if (p.done && !g.doneAt) { g.doneAt = now; changed = true; notify(`🎯 Meta batida${where}: ${p.label} chegou a ${p.valueText} (meta ${p.targetText}).`); speak('goals', `Meta batida${where}!`); }
     if (p.over && g.warnedWeek !== stats.weekStart(now)) { g.warnedWeek = stats.weekStart(now); changed = true; notify(`⏳ Você passou de ${p.targetText} h de jogo esta semana${where}. Já são ${p.valueText} h.`); }
   }
   if (changed) { store.save(); send('history-changed'); }
@@ -1050,6 +1068,8 @@ function hudTick() {
     cs2: c ? { map: c.mapLabel, ct: c.ctScore, t: c.tScore, team: c.team, money: c.money, phase: c.phase, roundPhase: c.roundPhase, buy: c.buy } : null,
     live: liveCard && liveCard.compact ? { title: liveCard.title.replace(/ ao vivo$/, ''), text: liveCard.compact } : null,
     rec: clips.status === 'on',
+    coach: hudCoach && hudCoach.until > Date.now() ? { text: hudCoach.text, label: hudCoach.label } : null,
+    net: netHud(),
   });
 }
 
@@ -1074,6 +1094,7 @@ async function onFpsDrop(drop) {
   if (store.state.settings.turboAlerts !== false && Date.now() - lastDropToast > 5 * 60000) {
     lastDropToast = Date.now();
     notify(`📉 FPS caiu de ${drop.from} para ${drop.to}. ${why.text}`);
+    speak('fps', `FPS caiu para ${drop.to}`);
   }
 }
 function checkHeat(sys) {
@@ -1136,9 +1157,7 @@ let autoClipTimer = null, lastAutoClip = 0;
 const clipsDir = () => path.join(app.getPath('videos'), 'Game Companion');
 const clipsWanted = () => Boolean(store.state.settings.clips && currentGame);
 function clipsInfo() {
-  const list = (store.state.clips || []).filter((c) => mtime(c.file)).slice(0, 8)
-    .map((c) => ({ file: c.file, name: path.basename(c.file), at: c.at, ms: c.ms, game: c.game, reason: c.reason || '' }));
-  return { status: clips.status, msg: clips.msg, list, dir: clipsDir(), seconds: store.state.settings.clipSeconds || 30 };
+  return { status: clips.status, msg: clips.msg, list: galleryList().slice(0, 3), dir: clipsDir(), seconds: store.state.settings.clipSeconds || 30 };
 }
 function setClipsStatus(status, msg = '') { clips.status = status; clips.msg = msg; send('clips', clipsInfo()); }
 async function startRecorder() {
@@ -1189,11 +1208,316 @@ function writeClip(buf, ms, meta = {}) {
   // Escreve a duração no cabeçalho (o MP4 conta o tempo real do vídeo; o WebM usa o tempo gravado).
   if (ext === 'mp4') { ms = mp4MediaDuration(data) || ms; data = fixMp4Duration(data, ms); } else data = fixDuration(data, ms);
   fs.writeFileSync(file, data);
-  store.state.clips = [{ file, at: Date.now(), ms: Math.round(ms), game: currentGame && currentGame.id, reason: meta.reason || '' }, ...(store.state.clips || [])].slice(0, 30);
+  store.state.clips = [{ file, at: Date.now(), ms: Math.round(ms), game: currentGame && currentGame.id, reason: meta.reason || '' }, ...(store.state.clips || [])].slice(0, 200);
   store.save();
   notify(`🎬 Clipe salvo: ${Math.round(ms / 1000)} s${meta.reason ? ` ${meta.reason}` : ''}. Ele fica em Vídeos, pasta Game Companion.`);
   send('clips', clipsInfo());
   return file;
+}
+
+// ---------- Clipes+: galeria, player, corte, versão para o Discord e copiar ----------
+let clipIndex = new Map();   // id -> arquivo, só os clipes da galeria (o gcclip:// não abre outros arquivos)
+const thumbsDir = () => path.join(app.getPath('userData'), 'thumbs');
+const thumbPath = (id) => path.join(thumbsDir(), `${id}.jpg`);
+function galleryList() {
+  const dir = clipsDir();
+  const files = [];
+  try {
+    for (const n of fs.readdirSync(dir)) {
+      if (!clipsLib.isVideo(n)) continue;
+      try { const f = path.join(dir, n), st = fs.statSync(f); if (st.isFile() && st.size > 0) files.push({ file: f, size: st.size, mtime: st.mtimeMs }); } catch {}
+    }
+  } catch {}
+  // Clipes que o app conhece fora da pasta (se a pasta Vídeos mudou) continuam enquanto existirem.
+  for (const c of store.state.clips || []) {
+    if (path.dirname(c.file).toLowerCase() === dir.toLowerCase() || files.some((f) => f.file.toLowerCase() === c.file.toLowerCase())) continue;
+    try { const st = fs.statSync(c.file); files.push({ file: c.file, size: st.size, mtime: st.mtimeMs }); } catch {}
+  }
+  const list = clipsLib.mergeClips(files, store.state.clips || []).slice(0, 200);
+  clipIndex = new Map(list.map((c) => [c.id, c.file]));
+  return list.map((c) => ({ ...c, gameName: c.game ? nameOfGame(c.game) : null, thumb: mtime(thumbPath(c.id)) ? `gcclip://thumb/${c.id}.jpg?v=${Math.round(mtime(thumbPath(c.id)))}` : null }));
+}
+const clipFile = (id) => { if (!clipIndex.has(id)) galleryList(); const f = clipIndex.get(String(id)); return f && mtime(f) ? f : null; };
+function registerClipProtocol() {
+  protocol.handle('gcclip', async (req) => {
+    const u = new URL(req.url), cors = { 'Access-Control-Allow-Origin': '*' };
+    const id = decodeURIComponent(u.pathname.replace(/^\//, '').replace(/\.jpg$/, ''));
+    let file = null, type = 'video/mp4';
+    if (u.hostname === 'thumb' && /^[0-9a-f]{16}$/.test(id)) { file = mtime(thumbPath(id)) ? thumbPath(id) : null; type = 'image/jpeg'; }
+    if (u.hostname === 'clip') { file = clipFile(id); if (/\.webm$/i.test(file || '')) type = 'video/webm'; }
+    if (!file) return new Response('', { status: 404, headers: cors });
+    const size = fs.statSync(file).size, range = clipsLib.parseRange(req.headers.get('range'), size);
+    const start = range ? range.start : 0, end = range ? range.end : size - 1;
+    const headers = { ...cors, 'Content-Type': type, 'Content-Length': String(end - start + 1), 'Accept-Ranges': 'bytes', 'Cache-Control': 'no-cache' };
+    if (range) headers['Content-Range'] = `bytes ${start}-${end}/${size}`;
+    return new Response(Readable.toWeb(fs.createReadStream(file, { start, end })), { status: range ? 206 : 200, headers });
+  });
+}
+function saveThumb(id, dataUrl) {
+  const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(String(dataUrl || ''));
+  if (!m || !/^[0-9a-f]{16}$/.test(id) || !clipFile(id) || m[1].length > 400000) return null;
+  fs.mkdirSync(thumbsDir(), { recursive: true });
+  fs.writeFileSync(thumbPath(id), Buffer.from(m[1], 'base64'));
+  return `gcclip://thumb/${id}.jpg?v=${Date.now()}`;
+}
+// Copia o arquivo (não o caminho): no Discord e no WhatsApp do PC, Ctrl+V já anexa o vídeo.
+function copyFileToClipboard(file) {
+  if (process.platform !== 'win32') { clipboard.writeText(file); return Promise.resolve(true); }
+  const cmd = `Set-Clipboard -LiteralPath '${file.replace(/'/g, "''")}'`;
+  return new Promise((resolve) => execFile('powershell', ['-NoProfile', '-NonInteractive', '-STA', '-EncodedCommand', Buffer.from(cmd, 'utf16le').toString('base64')], { windowsHide: true }, (err) => resolve(!err)));
+}
+async function deleteClip(id) {
+  const file = clipFile(id);
+  if (!file) return false;
+  try { await shell.trashItem(file); } catch { try { fs.rmSync(file); } catch { return false; } }
+  try { fs.rmSync(thumbPath(id), { force: true }); } catch {}
+  store.state.clips = (store.state.clips || []).filter((c) => c.file.toLowerCase() !== file.toLowerCase());
+  store.save();
+  send('clips', clipsInfo());
+  return true;
+}
+// O painel corta ou comprime tocando o vídeo e gravando de novo; aqui o resultado vai para a pasta.
+function writeExport(id, buf, meta = {}) {
+  const src = clipFile(id);
+  if (!src || !buf) return null;
+  const mode = meta.mode === 'discord' ? 'discord' : 'trim', ext = /mp4/.test(meta.mime || '') ? 'mp4' : 'webm';
+  let file = path.join(path.dirname(src), clipsLib.exportName(src, mode, ext));
+  for (let i = 2; fs.existsSync(file) && i < 100; i++) file = path.join(path.dirname(src), clipsLib.exportName(src, mode, ext).replace(/\)\.(\w+)$/, ` ${i}).$1`));
+  let data = Buffer.from(buf), ms = Number(meta.ms) || 0;
+  if (ext === 'mp4') { ms = mp4MediaDuration(data) || ms; data = fixMp4Duration(data, ms); } else data = fixDuration(data, ms);
+  fs.writeFileSync(file, data);
+  const orig = (store.state.clips || []).find((c) => c.file.toLowerCase() === src.toLowerCase()) || {};
+  store.state.clips = [{ file, at: Date.now(), ms: Math.round(ms), game: orig.game || null, reason: orig.reason || '', kind: mode }, ...(store.state.clips || [])].slice(0, 200);
+  store.save();
+  send('clips', clipsInfo());
+  return { id: clipsLib.clipId(file), name: path.basename(file), size: data.length, ms: Math.round(ms) };
+}
+
+// ---------- Coach IA: uma dica depois de cada partida ----------
+let hudCoach = null;   // { text, until, label } para o HUD
+let coachChain = Promise.resolve();
+const coachList = () => store.state.coachTips || [];
+const coachInfo = () => ({ list: coachList().slice(0, 15).map((t) => ({ ...t, gameName: nameOfGame(t.game) })) });
+function coachAfterMatch(game, m) {
+  if (!store.state.settings.coach) return;
+  const match = (store.state.history || []).find((x) => x.game === game && Math.abs(x.at - m.at) < 1000);
+  if (!match) return;
+  const ctx = coach.context(match, store.state.history, game);
+  const tip = {
+    id: `${game}-${match.at}`, game, at: match.at, match: { res: match.res, k: match.k, a: match.a, d: match.d, map: stats.mapOf(match) },
+    local: coach.localTip(match, ctx, game), ai: null, status: store.state.settings.coachAi ? 'thinking' : 'local',
+  };
+  store.state.coachTips = [tip, ...coachList().filter((t) => t.id !== tip.id)].slice(0, 40);
+  store.save();
+  send('coach', coachInfo());
+  // Sem o Claude, a dica rápida aparece depois do aviso de "partida registrada".
+  if (tip.status === 'local') { setTimeout(() => showCoach(tip), 7500); return; }
+  coachChain = coachChain.then(() => coachAi(tip, coach.coachPrompt(match, ctx, nameOfGame(game)))).catch(() => {});
+}
+const COACH_ERR = {
+  sampling_disabled: 'As perguntas ao Claude não funcionam nesta conta; ficou a dica rápida do app.',
+  not_granted: 'O Claude ainda não liberou as perguntas: abra a janela do Claude (Ctrl+Shift+W) e faça uma pergunta uma vez.',
+  unavailable: 'As perguntas ao Claude não funcionam nesta conta; ficou a dica rápida do app.',
+  rate_limited: 'Muitas perguntas seguidas ao Claude; ficou a dica rápida do app.',
+  page: 'A janela do Claude não abriu (faça login com Ctrl+Shift+W); ficou a dica rápida do app.',
+};
+async function coachAi(tip, prompt) {
+  let text = null, err = 'fail';
+  try {
+    const w = openClaude({ show: false });
+    const frame = await findAppFrame(w.webContents, 40000, 'gcCoach');
+    if (!frame) err = 'page';
+    else {
+      const r = await Promise.race([frame.executeJavaScript(`window.gcCoach(${JSON.stringify(prompt)})`), new Promise((res) => setTimeout(() => res({ error: 'timeout' }), 60000))]);
+      text = r && r.text ? coach.cleanTip(r.text) : null;
+      err = text ? null : (r && r.error) || 'empty';
+    }
+  } catch {}
+  const cur = coachList().find((t) => t.id === tip.id) || tip;
+  cur.ai = text; cur.status = text ? 'ai' : 'local';
+  if (err) cur.err = COACH_ERR[err] || 'O Claude não respondeu agora; ficou a dica rápida do app.'; else delete cur.err;
+  store.save();
+  showCoach(cur);
+}
+function showCoach(tip) {
+  const text = tip.ai || tip.local.text;
+  notify(`🧠 Coach: ${text}`);
+  hudCoach = { text, until: Date.now() + 45000, label: 'Coach' };
+  speak('coach', text);
+  send('coach', coachInfo());
+  hudTick();
+}
+// Lembrete da última dica no começo da próxima partida (jogo aberto de novo, nova partida do CS2 ou do Valorant).
+function coachRemind(game) {
+  if (!store.state.settings.coach || !game || (hudCoach && hudCoach.label === 'Coach' && hudCoach.until > Date.now())) return;
+  const t = coachList().find((x) => x.game === game && x.status !== 'thinking');
+  if (!t || Date.now() - t.at > 3 * 24 * 3600000) return;
+  hudCoach = { text: t.ai || t.local.text, until: Date.now() + 25000, label: 'Lembrete do coach' };
+  hudTick();
+}
+// "Conversar sobre a partida": abre o Claude com os números e pede um treino.
+function coachAsk(id) {
+  const t = coachList().find((x) => x.id === id);
+  const match = t && (store.state.history || []).find((x) => x.game === t.game && Math.abs(x.at - t.at) < 1000);
+  if (!match) return false;
+  const ctx = coach.context(match, store.state.history, t.game);
+  return askClaude(t.game, coach.followUp(match, ctx, nameOfGame(t.game), t.ai || t.local.text));
+}
+
+// ---------- Avisos falados (dica de compra, timers, coach, internet, metas) ----------
+let lastSpoken = { text: '', at: 0 };
+function speak(kind, text) {
+  const s = store.state.settings;
+  if (!s.voice || !(s.voiceEvents || {})[kind] || !text) return;
+  const clean = String(text).replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '').replace(/\s+/g, ' ').trim();
+  if (!clean || (clean === lastSpoken.text && Date.now() - lastSpoken.at < 15000)) return;
+  lastSpoken = { text: clean, at: Date.now() };
+  send('speak', { text: clean, volume: Math.max(0, Math.min(1, (Number(s.voiceVolume) || 80) / 100)), kind });
+}
+
+// ---------- Internet: ping e perda de pacotes, até o roteador e até a internet ----------
+const netState = { inet: new netLib.PingStats(), gw: new netLib.PingStats(), proc: null, hosts: '', gateway: undefined, base: null, lastAlert: 0, trouble: null };
+let netPanel = false;   // aba Turbo aberta: mede mesmo sem jogo
+const netWanted = () => Boolean(store.state.settings.net && (currentGame || netPanel));
+// No Windows, um PowerShell faz o ping dos dois endereços a cada segundo (responde "endereço ms" ou "endereço x").
+const PING_SCRIPT = String.raw`
+$p = New-Object System.Net.NetworkInformation.Ping
+while ($true) {
+  foreach ($h in $args) {
+    try { $r = $p.Send($h, 1000); if ($r.Status -eq 'Success') { [Console]::Out.WriteLine("$h $($r.RoundtripTime)") } else { [Console]::Out.WriteLine("$h x") } } catch { [Console]::Out.WriteLine("$h x") }
+  }
+  Start-Sleep -Milliseconds 1000
+}`;
+function stopNet() { if (netState.proc) { try { netState.proc.kill(); } catch {} netState.proc = null; } netState.hosts = ''; }
+async function syncNet() {
+  if (!netWanted()) { stopNet(); return; }
+  if (netState.gateway === undefined) { netState.gateway = null; try { const g = await si.networkGatewayDefault(); netState.gateway = netLib.hostOk(g) ? g : null; } catch {} }
+  if (!netWanted()) return;
+  const host = netLib.hostOk(store.state.settings.netHost) ? store.state.settings.netHost : '1.1.1.1';
+  const hosts = [host, netState.gateway].filter(Boolean);
+  if (netState.proc && netState.hosts === hosts.join(' ')) return;
+  stopNet();
+  netState.inet.reset(); netState.gw.reset(); netState.base = null; netState.hosts = hosts.join(' ');
+  const onLine = (key, r) => { if (r) netState[key].push(r.lost ? null : r.ms); };
+  if (process.platform === 'win32') {
+    const script = `${PING_SCRIPT.replace('$args', `@(${hosts.map((h) => `'${h}'`).join(',')})`)}`;
+    const p = spawn('powershell', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { windowsHide: true });
+    netState.proc = p;
+    let buf = '';
+    p.stdout.on('data', (d) => {
+      buf += d.toString(); const lines = buf.split(/\r?\n/); buf = lines.pop();
+      for (const l of lines) {
+        const [h, v] = l.trim().split(/\s+/);
+        const key = h === host ? 'inet' : h === netState.gateway ? 'gw' : null;
+        if (key) onLine(key, v === 'x' ? { lost: true } : isFinite(Number(v)) ? { ms: Math.max(Number(v), 0.5) } : null);
+      }
+    });
+    p.on('error', () => {}); p.on('exit', () => { if (netState.proc === p) { netState.proc = null; netState.hosts = ''; setTimeout(syncNet, 10000); } });
+    return;
+  }
+  // Linux e Mac (testes): o comando ping de cada endereço.
+  const procs = hosts.map((h, i) => {
+    const p = spawn('ping', ['-O', '-i', '1', h]);
+    let buf = '';
+    p.stdout.on('data', (d) => { buf += d.toString(); const lines = buf.split(/\r?\n/); buf = lines.pop(); for (const l of lines) onLine(i === 0 ? 'inet' : 'gw', netLib.parsePingLine(l)); });
+    p.on('error', () => {});
+    return p;
+  });
+  netState.proc = { kill: () => procs.forEach((p) => { try { p.kill(); } catch {} }) };
+}
+function netInfo() {
+  const now = Date.now(), recent = netState.inet.summary(30000, now);
+  return {
+    on: netWanted() && Boolean(netState.proc), enabled: Boolean(store.state.settings.net), host: netState.hosts.split(' ')[0] || null, gateway: netState.gateway || null,
+    inet: netState.inet.summary(60000, now), gw: netState.gw.summary(60000, now), recent,
+    diag: netLib.diagnose(recent, netState.gw.summary(30000, now)), series: netState.inet.series(now), trouble: netState.trouble,
+  };
+}
+function netHud() {
+  if (!netState.proc) return null;
+  const r = netState.inet.summary(10000);
+  return r ? { ms: r.last ?? r.avg, loss: netState.inet.summary(30000).loss, trouble: netState.trouble } : null;
+}
+// A cada 2 s: avisa quando a conexão fica ruim (no máximo a cada 3 minutos) e manda os números para o painel.
+function checkNet() {
+  if (!netState.proc) return;
+  const now = Date.now(), recent = netState.inet.summary(30000, now);
+  const t = netLib.trouble(recent, netState.base);
+  if (!t && recent && recent.n >= 10 && recent.avg != null) netState.base = netState.base == null ? recent.avg : Math.round(netState.base * 0.9 + recent.avg * 0.1);
+  if (t && !netState.trouble && currentGame && store.state.settings.turboAlerts !== false && now - netState.lastAlert > 3 * 60000) {
+    netState.lastAlert = now;
+    const what = t === 'loss' ? `${Math.round(recent.loss * 100)}% dos pacotes se perderam` : t === 'ping' ? `ping em ${recent.avg} ms` : `ping oscilando ${recent.jitter} ms`;
+    const diag = netLib.diagnose(recent, netState.gw.summary(30000, now));
+    notify(`📶 Internet instável: ${what} no último meio minuto. ${diag.text}`);
+    speak('net', t === 'loss' ? 'Internet perdendo pacotes' : 'Ping alto');
+  }
+  netState.trouble = t;
+  if (win && win.isVisible()) send('net', netInfo());
+}
+
+// ---------- Atualização automática (app portátil do Windows) ----------
+const upd = { status: 'idle', version: null, pct: 0, file: null, msg: '', info: null };
+const portableExe = () => process.env.PORTABLE_EXECUTABLE_FILE || null;
+const canAutoUpdate = () => process.platform === 'win32' && app.isPackaged && Boolean(portableExe());
+const updInfo = () => ({ status: upd.status, version: upd.version, pct: upd.pct, msg: upd.msg, auto: canAutoUpdate(), url: upd.info && upd.info.url, current: app.getVersion() });
+function setUpd(patch) { const was = upd.status; Object.assign(upd, patch); send('update-status', updInfo()); if (tray && was !== upd.status) buildTrayMenu(); }
+async function checkUpdate({ manual = false } = {}) {
+  const u = await checkLatest(UPDATE_REPO, app.getVersion());
+  if (!u) { if (manual && ['idle', 'latest', 'error'].includes(upd.status)) setUpd({ status: 'latest', msg: '' }); return null; }
+  upd.info = u;
+  if (canAutoUpdate() && store.state.settings.autoUpdate !== false && u.asset) downloadUpdate(u);
+  else if (upd.status !== 'ready') setUpd({ status: 'available', version: u.version });
+  return u;
+}
+async function downloadUpdate(u) {
+  if (upd.status === 'downloading' || (upd.status === 'ready' && upd.version === u.version)) return;
+  setUpd({ status: 'downloading', version: u.version, pct: 0, msg: '' });
+  // Baixa na pasta do .exe (a troca é só renomear); se não der para escrever lá, na pasta do app.
+  for (const dir of [path.dirname(portableExe()), path.join(app.getPath('userData'), 'update')]) {
+    const file = path.join(dir, `.GameCompanion-${u.version}.exe.download`);
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      let sent = 0;
+      const got = await download(u.asset.url, file, {
+        onProgress: (n, total) => { const pct = Math.floor((n / (total || u.asset.size || 1)) * 100); if (Date.now() - sent > 700) { sent = Date.now(); setUpd({ pct: Math.min(99, pct) }); } },
+      });
+      if (!verify(got, u.asset)) { fs.rmSync(file, { force: true }); setUpd({ status: 'error', msg: 'O arquivo baixado veio diferente do publicado. Tento de novo mais tarde.' }); return; }
+      setUpd({ status: 'ready', pct: 100, file });
+      notify(`⬆️ Versão ${u.version} baixada. Ela entra quando você fechar o app, ou clique em Reiniciar no painel.`);
+      return;
+    } catch { try { fs.rmSync(file, { force: true }); } catch {} }
+  }
+  setUpd({ status: 'error', msg: 'Não consegui baixar a versão nova. Tento de novo mais tarde.' });
+}
+// Troca o .exe: o atual vira .old (o Windows deixa renomear um programa aberto) e o novo fica no mesmo nome,
+// então atalhos e o "Iniciar com o Windows" continuam funcionando.
+function applyUpdate() {
+  if (upd.status !== 'ready' || !upd.file || !canAutoUpdate() || !fs.existsSync(upd.file)) return false;
+  const exe = portableExe(), old = `${exe}.old`;
+  try {
+    try { fs.rmSync(old, { force: true }); } catch {}
+    fs.renameSync(exe, old);
+    try { try { fs.renameSync(upd.file, exe); } catch { fs.copyFileSync(upd.file, exe); fs.rmSync(upd.file, { force: true }); } } catch (e) { fs.renameSync(old, exe); throw e; }
+    upd.status = 'applied';
+    return true;
+  } catch { upd.status = 'error'; upd.msg = 'Não consegui trocar o arquivo do app. Baixe a versão nova pelo GitHub.'; return false; }
+}
+function restartToUpdate() {
+  if (!applyUpdate()) { send('update-status', updInfo()); return false; }
+  app.relaunch({ execPath: portableExe(), args: ['--updated'] });
+  app.quit();
+  return true;
+}
+// Restos de uma atualização: o .exe antigo (apagado assim que o Windows soltar o arquivo) e downloads pela metade.
+function cleanupUpdate() {
+  const exe = portableExe();
+  if (process.argv.includes('--updated')) setTimeout(() => notify(`✅ Game Companion atualizado para a versão ${app.getVersion()}.`), 4000);
+  if (!exe) return;
+  const rmOld = (n) => { try { fs.rmSync(`${exe}.old`, { force: true }); } catch { if (n > 0) setTimeout(() => rmOld(n - 1), 10000); } };
+  if (fs.existsSync(`${exe}.old`)) rmOld(6);
+  for (const dir of [path.dirname(exe), path.join(app.getPath('userData'), 'update')]) {
+    try { for (const f of fs.readdirSync(dir)) if (/^\.GameCompanion-.*\.exe\.download$/.test(f)) fs.rmSync(path.join(dir, f), { force: true }); } catch {}
+  }
 }
 
 // ---------- Ícone perto do relógio ----------
@@ -1208,6 +1532,7 @@ function buildTrayMenu() {
     { label: 'Print do placar', click: captureScoreboard },
     { label: 'Salvar clipe', click: () => saveClip('') },
     { label: 'Mostrar ou esconder o HUD', click: toggleHud },
+    ...(upd.status === 'ready' ? [{ label: `Reiniciar e atualizar para a ${upd.version}`, click: restartToUpdate }] : []),
     { type: 'separator' },
     { label: 'Iniciar com o Windows', type: 'checkbox', checked: startsWithWindows(),
       click: (item) => { app.setLoginItemSettings({ openAtLogin: item.checked, path: loginExe(), args: ['--hidden'] }); buildTrayMenu(); } },
@@ -1242,7 +1567,23 @@ function toggleHud() {
 }
 
 function registerIpc() {
-  ipcMain.handle('get-state', () => ({ games, currentGame, state: store.state, mode: { clickThrough, compact }, cs2: cs2.state, cs2Status, live: liveCard, settings: store.state.settings, version: app.getVersion(), clips: clipsInfo(), power: powerStatus, drops: turboDrops }));
+  ipcMain.handle('get-state', () => ({ games, currentGame, state: store.state, mode: { clickThrough, compact }, cs2: cs2.state, cs2Status, live: liveCard, settings: store.state.settings, version: app.getVersion(), clips: clipsInfo(), power: powerStatus, drops: turboDrops, coach: coachInfo(), net: netInfo(), update: updInfo() }));
+  // Coach
+  ipcMain.handle('coach', () => coachInfo());
+  ipcMain.handle('coach-ask', (_e, id) => coachAsk(String(id || '')));
+  // Internet
+  ipcMain.handle('net', () => netInfo());
+  ipcMain.handle('net-watch', (_e, on) => { netPanel = Boolean(on); syncNet(); return netInfo(); });
+  // Atualização
+  ipcMain.handle('update-restart', () => restartToUpdate());
+  // Galeria de clipes
+  ipcMain.handle('clips-gallery', () => galleryList());
+  ipcMain.handle('clip-thumb', (_e, id, dataUrl) => { try { return saveThumb(String(id), dataUrl); } catch { return null; } });
+  ipcMain.handle('clip-open', (_e, id) => { const f = clipFile(String(id)); if (f) shell.openPath(f); });
+  ipcMain.handle('clip-show', (_e, id) => { const f = clipFile(String(id)); if (f) shell.showItemInFolder(f); });
+  ipcMain.handle('clip-copy', async (_e, id) => { const f = clipFile(String(id)); return f ? copyFileToClipboard(f) : false; });
+  ipcMain.handle('clip-delete', (_e, id) => deleteClip(String(id)));
+  ipcMain.handle('clip-export', (_e, id, buf, meta) => { try { return writeExport(String(id), buf, meta || {}); } catch { return null; } });
   // Evolução
   ipcMain.handle('evolution', (_e, game, days) => evolutionFor(game || null, [7, 30, 0].includes(days) ? days : 30));
   ipcMain.handle('evo-sync', () => syncWebHistory({ force: Date.now() - lastWebSync > 60000 }));
@@ -1260,7 +1601,6 @@ function registerIpc() {
   // Clipes
   ipcMain.handle('save-clip', () => saveClip(''));
   ipcMain.handle('clips', () => clipsInfo());
-  ipcMain.handle('open-clip', (_e, file) => { if ((store.state.clips || []).some((c) => c.file === file) && mtime(file)) shell.openPath(file); });
   ipcMain.handle('open-clips-folder', () => { fs.mkdirSync(clipsDir(), { recursive: true }); shell.openPath(clipsDir()); });
   ipcMain.handle('rec-status', (_e, st) => {
     if (!st || !['on', 'error', 'starting'].includes(st.status)) return;
@@ -1277,6 +1617,9 @@ function registerIpc() {
       hudItems: (v) => Object.fromEntries(Object.keys(store.state.settings.hudItems || {}).map((k) => [k, Boolean(v && v[k])])),
       turboPower: Boolean, turboAlerts: Boolean, dailyLimitMin: (v) => Math.max(0, Math.min(24 * 60, Math.round(Number(v) || 0))),
       clips: Boolean, clipSeconds: (v) => ([15, 30, 60].includes(Number(v)) ? Number(v) : 30), clipAuto: Boolean, clipQuality: (v) => (v === '1080' ? '1080' : '720'),
+      coach: Boolean, coachAi: Boolean, voice: Boolean, voiceVolume: (v) => Math.max(10, Math.min(100, Math.round(Number(v) || 80))),
+      voiceEvents: (v) => Object.fromEntries(Object.keys(store.state.settings.voiceEvents || {}).map((k) => [k, Boolean(v && v[k])])),
+      net: Boolean, netHost: (v) => (netLib.hostOk(String(v || '').trim()) ? String(v).trim().slice(0, 100) : '1.1.1.1'), autoUpdate: Boolean,
     };
     if (!allowed[key]) return;
     store.state.settings = { ...store.state.settings, [key]: allowed[key](value) };
@@ -1287,6 +1630,8 @@ function registerIpc() {
     if (key === 'turboPower') syncPower();
     if (key === 'clips') syncClips();
     if (['clipSeconds', 'clipQuality'].includes(key) && recWin) { stopRecorder(); syncClips(); }
+    if (key === 'net' || key === 'netHost') syncNet();
+    if (key === 'autoUpdate' && value) checkUpdate();
     return store.state.settings;
   });
   // Encaixa o painel num canto da tela onde ele está.
@@ -1298,7 +1643,7 @@ function registerIpc() {
   });
   ipcMain.handle('get-autostart', () => startsWithWindows());
   ipcMain.handle('set-autostart', (_e, on) => { app.setLoginItemSettings({ openAtLogin: Boolean(on), path: loginExe(), args: ['--hidden'] }); buildTrayMenu(); return startsWithWindows(); });
-  ipcMain.handle('check-update', async () => { const u = await checkLatest(UPDATE_REPO, app.getVersion()); if (u) send('update', u); return u; });
+  ipcMain.handle('check-update', async () => { await checkUpdate({ manual: true }); return updInfo(); });
   ipcMain.handle('rate-session', (_e, start, rating, note) => { store.rateSession(start, rating, note); store.save(); });
   ipcMain.handle('quit', () => app.quit());
   // "Não é um jogo": esse programa não é mais reconhecido sozinho.
@@ -1344,6 +1689,7 @@ app.whenReady().then(() => {
   store = new Store(path.join(app.getPath('userData'), 'data.json'));
   createWindow({ hidden: process.argv.includes('--hidden') });
   registerIpc();
+  registerClipProtocol();
   registerShortcuts();
   createTray();
   startForegroundWatch();
@@ -1362,9 +1708,10 @@ app.whenReady().then(() => {
   setTimeout(weeklyNotice, 30000); setInterval(weeklyNotice, 3600000);
   pollGame();
   setInterval(pollGame, POLL_MS);
-  // Procura versão nova ao abrir e a cada 6 horas.
-  const checkUpdate = async () => { const u = await checkLatest(UPDATE_REPO, app.getVersion()); if (u) send('update', u); };
-  setTimeout(checkUpdate, 15000); setInterval(checkUpdate, 6 * 3600 * 1000);
+  // Procura versão nova ao abrir e a cada 6 horas (no app portátil do Windows, já baixa).
+  cleanupUpdate();
+  setTimeout(() => checkUpdate(), 15000); setInterval(() => checkUpdate(), 6 * 3600 * 1000);
+  setInterval(checkNet, 2000);
 });
 
 app.on('will-quit', () => {
@@ -1372,6 +1719,9 @@ app.on('will-quit', () => {
   stopFps();
   if (fgProc) { try { fgProc.kill(); } catch {} }
   stopRecorder();
+  stopNet();
   if (store) { finishSession({ quiet: true }); restorePowerSync(); store.save(); }
   if (liveMod) liveMod.stop();
+  // Versão nova já baixada: entra no lugar agora, e o app abre atualizado da próxima vez.
+  if (upd.status === 'ready') applyUpdate();
 });

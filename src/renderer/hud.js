@@ -21,6 +21,10 @@ function render() {
   }
   if (it.session && data.session) top.push(`<span class="pill">⏱ ${fmt((now - data.session) / 1000)}</span>`);
   if (it.clock) top.push(`<span class="pill">${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>`);
+  if (it.net && data.net && data.net.ms != null) {
+    const n = data.net, cls = n.trouble || n.loss >= 0.05 || n.ms > 100 ? 'bad' : n.loss > 0 || n.ms > 50 ? 'mid' : 'good';
+    top.push(`<span class="pill">📶 <b class="${cls}">${n.ms < 1 ? '<1' : Math.round(n.ms)}</b> ms${n.loss > 0 ? ` <small>perda ${Math.round(n.loss * 100)}%</small>` : ''}</span>`);
+  }
   if (top.length) rows.push(`<div class="row">${top.join('')}</div>`);
   if (it.timer && data.timers && data.timers.length) {
     rows.push(`<div class="row">${data.timers.map((t) => `<span class="pill">⏰ ${esc(t.label)} <b>${fmt((t.end - now) / 1000)}</b></span>`).join('')}</div>`);
@@ -34,6 +38,8 @@ function render() {
   } else if (it.live && data.live) {
     rows.push(`<div class="row"><span class="pill">${esc(data.live.title)} · ${esc(data.live.text)}</span></div>`);
   }
+  // Dica do coach: aparece por alguns segundos depois da partida e no começo da próxima.
+  if (it.coach && data.coach) rows.push(`<div class="row"><span class="pill tip coach">🧠 <span><small>${esc(data.coach.label)}</small><br>${esc(data.coach.text)}</span></span></div>`);
   box.innerHTML = rows.join('');
   const r = box.getBoundingClientRect(), size = `${Math.ceil(r.width)}x${Math.ceil(r.height)}`;
   if (size !== lastSize) { lastSize = size; window.api.hudSize(Math.ceil(r.width) + 2, Math.ceil(r.height) + 2); }

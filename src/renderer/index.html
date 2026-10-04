@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: gcclip:; media-src 'self' gcclip: blob:">
   <title>Game Companion</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -30,6 +30,15 @@
     <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></symbol>
     <symbol id="i-layers" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></symbol>
     <symbol id="i-radio" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8a6 6 0 0 1 0 8.5"/><path d="M7.8 16.2a6 6 0 0 1 0-8.5"/><path d="M19.1 4.9a10 10 0 0 1 0 14.2"/><path d="M4.9 19.1a10 10 0 0 1 0-14.2"/></symbol>
+    <symbol id="i-brain" viewBox="0 0 24 24"><path d="M9.5 2A2.5 2.5 0 0 0 7 4.5v.3A3 3 0 0 0 4.5 8a3 3 0 0 0 .4 1.5A3 3 0 0 0 4 12a3 3 0 0 0 1.6 2.6A3 3 0 0 0 8 19a2.5 2.5 0 0 0 4 1.5V4a2 2 0 0 0-2.5-2z"/><path d="M14.5 2A2.5 2.5 0 0 1 17 4.5v.3A3 3 0 0 1 19.5 8a3 3 0 0 1-.4 1.5A3 3 0 0 1 20 12a3 3 0 0 1-1.6 2.6A3 3 0 0 1 16 19a2.5 2.5 0 0 1-4 1.5"/></symbol>
+    <symbol id="i-wifi" viewBox="0 0 24 24"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></symbol>
+    <symbol id="i-volume" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></symbol>
+    <symbol id="i-scissors" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></symbol>
+    <symbol id="i-send" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><polygon points="6 3 20 12 6 21 6 3"/></symbol>
     <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
   </svg>
 
@@ -63,6 +72,7 @@
     <nav class="tabs">
       <button data-tab="jogo" class="active"><svg><use href="#i-target"/></svg>Jogo</button>
       <button data-tab="evolucao"><svg><use href="#i-trend"/></svg>Evolução</button>
+      <button data-tab="clipes"><svg><use href="#i-film"/></svg>Clipes</button>
       <button data-tab="turbo"><svg><use href="#i-zap"/></svg>Turbo</button>
       <button data-tab="timers"><svg><use href="#i-clock"/></svg>Timers</button>
       <button data-tab="ajustes"><svg><use href="#i-sliders"/></svg>Ajustes</button>
@@ -107,11 +117,20 @@
           <div id="cs2-last" class="lines"></div>
         </div>
 
+        <div id="coach-card" class="card coach" hidden>
+          <div class="card-head"><span class="pill-coach"><svg><use href="#i-brain"/></svg>Coach</span><b id="coach-title"></b><span id="coach-when" class="muted"></span></div>
+          <p id="coach-text" class="coach-text"></p>
+          <div id="coach-facts" class="facts"></div>
+          <div id="coach-err" class="muted small"></div>
+          <div class="row coach-actions"><button id="btn-coach-ask" class="btn ghost"><svg><use href="#i-chat"/></svg>Conversar com o Claude sobre a partida</button></div>
+        </div>
+
         <div id="clips-card" class="card" hidden>
           <div class="card-head"><span id="clips-pill" class="pill-rec"><i></i>Clipes</span><b id="clips-title">Clipes</b>
             <button id="btn-save-clip" class="btn small-btn"><svg><use href="#i-film"/></svg>Salvar agora</button></div>
           <div id="clips-msg" class="muted small"></div>
           <ul id="clips-list" class="list clips"></ul>
+          <button id="btn-clips-tab" class="link">Ver todos os clipes →</button>
         </div>
 
         <div class="card">
@@ -155,6 +174,11 @@
           <div id="evo-trend" class="small muted"></div>
           <svg id="evo-chart" class="chart" viewBox="0 0 340 120"></svg>
           <div class="small muted legend"><i class="dot win"></i>vitória <i class="dot loss"></i>derrota <i class="dot none"></i>sem resultado <i class="line-key"></i>média de 5</div>
+        </div>
+
+        <div id="evo-coach-card" class="card" hidden>
+          <div class="card-label"><svg><use href="#i-brain"/></svg>Dicas do coach</div>
+          <ul id="evo-coach" class="list coach-list"></ul>
         </div>
 
         <div class="card">
@@ -209,6 +233,17 @@
         <div id="evo-src" class="small muted center"></div>
       </section>
 
+      <section id="tab-clipes" class="tab">
+        <div class="card clips-top">
+          <div class="card-head"><span id="gal-pill" class="pill-rec"><i></i>Clipes</span><b id="gal-title">Clipes</b>
+            <button id="btn-gal-save" class="btn small-btn"><svg><use href="#i-film"/></svg>Salvar agora</button></div>
+          <div id="gal-msg" class="muted small"></div>
+        </div>
+        <div id="gal-empty" class="card note" hidden></div>
+        <div id="gallery" class="gallery"></div>
+        <div class="row center-row"><button id="btn-gal-folder" class="btn ghost"><svg><use href="#i-folder"/></svg>Abrir a pasta dos clipes</button></div>
+      </section>
+
       <section id="tab-turbo" class="tab">
         <div class="card fps-card">
           <div><span class="card-label">FPS do jogo</span><b id="v-fps">–</b><span id="v-low" class="muted small"></span></div>
@@ -223,6 +258,17 @@
           <canvas id="spark" width="340" height="70"></canvas>
           <div class="small muted legend"><i class="dot cpu"></i>CPU <i class="dot gpu"></i>GPU (últimos 2 min)</div>
         </div>
+        <div id="net-card" class="card">
+          <div class="card-label"><svg><use href="#i-wifi"/></svg>Internet <span id="net-host" class="muted"></span></div>
+          <div class="net-nums">
+            <div><b id="net-ping">–</b><span>ping</span></div>
+            <div><b id="net-loss">–</b><span>perda</span></div>
+            <div><b id="net-jitter">–</b><span>oscilação</span></div>
+            <div><b id="net-gw">–</b><span>até o roteador</span></div>
+          </div>
+          <canvas id="net-chart" width="340" height="60"></canvas>
+          <div id="net-diag" class="small net-diag"></div>
+        </div>
         <div class="card">
           <div class="card-label"><svg><use href="#i-activity"/></svg>O que está pesando</div>
           <ul id="procs" class="list procs"></ul>
@@ -236,7 +282,7 @@
           <div class="card-label">Turbo</div>
           <label class="set-row">Desempenho máximo do Windows enquanto joga <input id="set-turbo-power" type="checkbox" class="switch"></label>
           <div id="power-msg" class="small muted"></div>
-          <label class="set-row">Avisar quando o FPS cair ou o PC esquentar <input id="set-turbo-alerts" type="checkbox" class="switch"></label>
+          <label class="set-row">Avisar quando o FPS cair, o PC esquentar ou a internet falhar <input id="set-turbo-alerts" type="checkbox" class="switch"></label>
         </div>
         <div class="card">
           <div class="card-label">FPS por sessão <span id="fps-hist-game" class="muted"></span></div>
@@ -305,9 +351,31 @@
           </div>
           <div class="chips toggles" id="set-hud-items">
             <button data-item="fps">FPS</button><button data-item="perf">CPU e GPU</button><button data-item="session">Tempo de sessão</button>
-            <button data-item="clock">Relógio</button><button data-item="timer">Timers</button><button data-item="cs2">CS2 e dica de compra</button><button data-item="live">Outros jogos ao vivo</button>
+            <button data-item="clock">Relógio</button><button data-item="timer">Timers</button><button data-item="cs2">CS2 e dica de compra</button><button data-item="live">Outros jogos ao vivo</button><button data-item="coach">Coach</button><button data-item="net">Ping</button>
           </div>
           <div class="small muted">Os cliques passam direto para o jogo. Aparece com o jogo em janela ou em tela cheia sem borda.</div>
+        </div>
+        <div class="card">
+          <div class="card-label"><svg><use href="#i-brain"/></svg>Coach IA</div>
+          <label class="set-row">Dica depois de cada partida <input id="set-coach" type="checkbox" class="switch"></label>
+          <label class="set-row">Pedir a dica ao Claude <input id="set-coach-ai" type="checkbox" class="switch"></label>
+          <div class="small muted">Funciona no CS2, Valorant e TF2 (partidas que entram sozinhas). Sem o Claude, o app compara a partida com a sua média e dá uma dica rápida. O Claude usa a sua conta do claude.ai pela janela do Claude.</div>
+        </div>
+        <div class="card">
+          <div class="card-label"><svg><use href="#i-volume"/></svg>Avisos falados</div>
+          <label class="set-row">Falar os avisos em voz alta <input id="set-voice" type="checkbox" class="switch"></label>
+          <label class="set-row">Volume <input id="set-voice-volume" type="range" min="10" max="100" step="10"></label>
+          <div class="chips toggles" id="set-voice-events">
+            <button data-ev="buy">Dica de compra do CS2</button><button data-ev="timers">Timers e lembretes</button><button data-ev="coach">Coach</button>
+            <button data-ev="net">Internet instável</button><button data-ev="goals">Metas batidas</button><button data-ev="fps">Queda de FPS</button>
+          </div>
+          <div class="row"><button id="btn-voice-test" class="btn ghost"><svg><use href="#i-volume"/></svg>Testar a voz</button><span id="voice-name" class="muted small"></span></div>
+        </div>
+        <div class="card">
+          <div class="card-label"><svg><use href="#i-wifi"/></svg>Internet</div>
+          <label class="set-row">Medir ping e perda de pacotes enquanto joga <input id="set-net" type="checkbox" class="switch"></label>
+          <label class="set-row">Endereço para o ping <input id="set-net-host" class="host" placeholder="1.1.1.1"></label>
+          <div class="small muted">O app também mede até o seu roteador, para dizer se a falha é no Wi-Fi de casa ou na internet.</div>
         </div>
         <div class="card">
           <div class="card-label"><svg><use href="#i-film"/></svg>Clipes</div>
@@ -336,6 +404,7 @@
         </div>
         <div class="card about">
           <div><b>Game Companion</b> <span id="app-version" class="muted"></span></div>
+          <label class="set-row">Atualizar sozinho (baixa e instala quando fechar o app) <input id="set-auto-update" type="checkbox" class="switch"></label>
           <div class="row">
             <button id="btn-check-update" class="btn ghost"><svg><use href="#i-download"/></svg>Procurar atualização</button>
             <button id="btn-browser" class="btn ghost">Abrir no navegador</button>
@@ -346,6 +415,28 @@
     </main>
 
     <div id="banner" hidden></div>
+
+    <div id="player" class="overlay player" hidden>
+      <div class="sheet">
+        <div class="player-head"><b id="pl-name"></b><button id="pl-close" class="icon-btn" title="Fechar"><svg><use href="#i-x"/></svg></button></div>
+        <video id="pl-video" controls crossorigin="anonymous" preload="metadata"></video>
+        <div id="pl-bar" class="trim-bar" title="Clique para ir até esse ponto"><i id="pl-sel"></i><i id="pl-head"></i></div>
+        <div class="trim-row">
+          <button id="pl-in" class="btn ghost">⟦ Início aqui</button>
+          <span id="pl-range" class="muted"></span>
+          <button id="pl-out" class="btn ghost">Fim aqui ⟧</button>
+        </div>
+        <div class="player-actions">
+          <button id="pl-trim" class="btn"><svg><use href="#i-scissors"/></svg>Salvar corte</button>
+          <button id="pl-discord" class="btn ghost" title="Até 10 MB, o limite do Discord sem Nitro"><svg><use href="#i-send"/></svg>Versão Discord</button>
+          <button id="pl-copy" class="btn ghost" title="Copia o arquivo: cole com Ctrl+V no Discord ou WhatsApp"><svg><use href="#i-copy"/></svg>Copiar</button>
+          <button id="pl-show" class="btn ghost" title="Mostrar na pasta"><svg><use href="#i-folder"/></svg></button>
+          <button id="pl-del" class="btn ghost danger" title="Mandar para a lixeira"><svg><use href="#i-trash"/></svg></button>
+        </div>
+        <div id="pl-progress" class="pl-progress" hidden><div class="bar"><i id="pl-pbar"></i></div><span id="pl-ptext"></span></div>
+        <div id="pl-msg" class="small muted"></div>
+      </div>
+    </div>
 
     <div id="summary" class="overlay" hidden>
       <div class="sheet">

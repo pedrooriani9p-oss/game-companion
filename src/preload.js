@@ -14,7 +14,6 @@ contextBridge.exposeInMainWorld('api', {
   fpsAdmin: () => ipcRenderer.invoke('fps-admin'),
   openUpdate: (url) => ipcRenderer.invoke('open-update', url),
   onToast: (cb) => ipcRenderer.on('toast', (_e, t) => cb(t)),
-  onUpdate: (cb) => ipcRenderer.on('update', (_e, u) => cb(u)),
   rateSession: (start, rating, note) => ipcRenderer.invoke('rate-session', start, rating, note),
   ignoreGame: () => ipcRenderer.invoke('ignore-game'),
   quit: () => ipcRenderer.invoke('quit'),
@@ -53,10 +52,29 @@ contextBridge.exposeInMainWorld('api', {
   // Clipes
   saveClip: () => ipcRenderer.invoke('save-clip'),
   clips: () => ipcRenderer.invoke('clips'),
-  openClip: (file) => ipcRenderer.invoke('open-clip', file),
   openClipsFolder: () => ipcRenderer.invoke('open-clips-folder'),
   onClips: (cb) => ipcRenderer.on('clips', (_e, c) => cb(c)),
   onRec: (cb) => ipcRenderer.on('rec', (_e, m) => cb(m)),
   recStatus: (st) => ipcRenderer.invoke('rec-status', st),
-  recFile: (buf, ms, meta) => ipcRenderer.invoke('rec-file', buf, ms, meta)
+  recFile: (buf, ms, meta) => ipcRenderer.invoke('rec-file', buf, ms, meta),
+  // Galeria de clipes
+  clipsGallery: () => ipcRenderer.invoke('clips-gallery'),
+  clipThumb: (id, dataUrl) => ipcRenderer.invoke('clip-thumb', id, dataUrl),
+  clipOpen: (id) => ipcRenderer.invoke('clip-open', id),
+  clipShow: (id) => ipcRenderer.invoke('clip-show', id),
+  clipCopy: (id) => ipcRenderer.invoke('clip-copy', id),
+  clipDelete: (id) => ipcRenderer.invoke('clip-delete', id),
+  clipExport: (id, buf, meta) => ipcRenderer.invoke('clip-export', id, buf, meta),
+  // Coach
+  coach: () => ipcRenderer.invoke('coach'),
+  coachAsk: (id) => ipcRenderer.invoke('coach-ask', id),
+  onCoach: (cb) => ipcRenderer.on('coach', (_e, c) => cb(c)),
+  // Voz e internet
+  onSpeak: (cb) => ipcRenderer.on('speak', (_e, m) => cb(m)),
+  net: () => ipcRenderer.invoke('net'),
+  netWatch: (on) => ipcRenderer.invoke('net-watch', on),
+  onNet: (cb) => ipcRenderer.on('net', (_e, n) => cb(n)),
+  // Atualização
+  onUpdateStatus: (cb) => ipcRenderer.on('update-status', (_e, u) => cb(u)),
+  updateRestart: () => ipcRenderer.invoke('update-restart')
 });

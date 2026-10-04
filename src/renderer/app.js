@@ -30,7 +30,11 @@ $$('.tabs button').forEach((b) => b.addEventListener('click', () => {
   $$('.tab').forEach((t) => t.classList.toggle('active', t.id === `tab-${b.dataset.tab}`));
   if (activeTab === 'turbo') { refreshState(); refreshProcs(); }
   if (activeTab === 'evolucao') { refreshState(); renderEvolution(); window.api.evoSync().then((ok) => { if (ok) renderEvolution(); }).catch(() => {}); }
+  if (activeTab === 'clipes') renderGallery();
+  // A internet é medida com a aba Turbo aberta, mesmo sem jogo.
+  window.api.netWatch(activeTab === 'turbo').then(renderNet).catch(() => {});
 }));
+function showTab(name) { const b = document.querySelector(`.tabs button[data-tab="${name}"]`); if (b) b.click(); }
 
 $('#btn-hide').onclick = () => window.api.hide();
 $('#btn-web').onclick = () => window.api.openWeb();
@@ -45,11 +49,25 @@ window.api.onToast((text) => {
   b.textContent = text; b.hidden = false;
   clearTimeout(b._t); b._t = setTimeout(() => { b.hidden = true; }, 7000);
 });
-window.api.onUpdate((u) => {
-  const el = $('#update');
-  el.textContent = `⬆️ Versão ${u.version} disponível. Clique para baixar.`;
-  el.hidden = false; el.onclick = () => window.api.openUpdate(u.url);
-});
+// Versão nova: no app portátil do Windows ela baixa sozinha e entra ao fechar (ou no botão Reiniciar).
+let updState = null;
+function renderUpdate(u) {
+  updState = u || updState;
+  const el = $('#update'), st = $('#update-status');
+  if (!updState) return;
+  const v = updState.version;
+  el.hidden = !['available', 'downloading', 'ready'].includes(updState.status);
+  el.classList.toggle('ready', updState.status === 'ready');
+  if (updState.status === 'available') { el.textContent = `⬆️ Versão ${v} disponível. Clique para baixar.`; el.onclick = () => window.api.openUpdate(updState.url); }
+  if (updState.status === 'downloading') { el.textContent = `⬇️ Baixando a versão ${v}... ${updState.pct || 0}%`; el.onclick = null; }
+  if (updState.status === 'ready') { el.textContent = `✅ Versão ${v} pronta. Clique para reiniciar e atualizar (ou ela entra quando você fechar o app).`; el.onclick = () => { el.textContent = 'Reiniciando...'; window.api.updateRestart(); }; }
+  st.textContent = updState.status === 'latest' ? 'Você já tem a versão mais nova.'
+    : updState.status === 'available' ? `Versão ${v} disponível${updState.auto ? '' : ' no GitHub'}.`
+      : updState.status === 'downloading' ? `Baixando a versão ${v}: ${updState.pct || 0}%.`
+        : updState.status === 'ready' ? `Versão ${v} baixada. Ela entra quando você fechar o app.`
+          : updState.status === 'error' ? updState.msg || 'Não consegui atualizar agora.' : '';
+}
+window.api.onUpdateStatus(renderUpdate);
 
 // FPS do jogo (PresentMon).
 let lastFps = null;
@@ -345,6 +363,7 @@ function alertUser(text) {
   b.textContent = `⏰ ${text}`; b.hidden = false;
   clearTimeout(b._t); b._t = setTimeout(() => { b.hidden = true; }, 8000);
   beep();
+  if (settings.voice && (settings.voiceEvents || {}).timers) setTimeout(() => say(text), 900);
   try { new Notification('Game Companion', { body: text, silent: true }); } catch {}
 }
 
@@ -474,7 +493,16 @@ function applySettings() {
   $$('#set-clip-seconds button').forEach((b) => b.classList.toggle('on', Number(b.dataset.sec) === Number(settings.clipSeconds || 30)));
   $$('#set-clip-quality button').forEach((b) => b.classList.toggle('on', b.dataset.q === (settings.clipQuality || '720')));
   $('#set-clip-auto').checked = settings.clipAuto !== false;
-  renderClips();
+  $('#set-coach').checked = settings.coach !== false;
+  $('#set-coach-ai').checked = settings.coachAi !== false;
+  $('#set-coach-ai').disabled = settings.coach === false;
+  $('#set-voice').checked = Boolean(settings.voice);
+  $('#set-voice-volume').value = settings.voiceVolume ?? 80;
+  $$('#set-voice-events button').forEach((b) => b.classList.toggle('on', Boolean((settings.voiceEvents || {})[b.dataset.ev])));
+  $('#set-net').checked = settings.net !== false;
+  if (document.activeElement !== $('#set-net-host')) $('#set-net-host').value = settings.netHost || '1.1.1.1';
+  $('#set-auto-update').checked = settings.autoUpdate !== false;
+  renderClips(); renderCoach();
 }
 function setSetting(key, value) { settings[key] = value; applySettings(); window.api.setSetting(key, value); }
 $('#set-opacity').oninput = (e) => setSetting('opacity', Number(e.target.value));
@@ -493,13 +521,21 @@ $$('#set-clip-seconds button').forEach((b) => b.onclick = () => setSetting('clip
 $$('#set-clip-quality button').forEach((b) => b.onclick = () => setSetting('clipQuality', b.dataset.q));
 $('#set-clip-auto').onchange = (e) => setSetting('clipAuto', e.target.checked);
 $('#btn-clips-folder').onclick = () => window.api.openClipsFolder();
+$('#set-coach').onchange = (e) => setSetting('coach', e.target.checked);
+$('#set-coach-ai').onchange = (e) => setSetting('coachAi', e.target.checked);
+$('#set-voice').onchange = (e) => setSetting('voice', e.target.checked);
+$('#set-voice-volume').onchange = (e) => { setSetting('voiceVolume', Number(e.target.value)); say('Volume da voz', Number(e.target.value) / 100); };
+$$('#set-voice-events button').forEach((b) => b.onclick = () => setSetting('voiceEvents', { ...(settings.voiceEvents || {}), [b.dataset.ev]: !(settings.voiceEvents || {})[b.dataset.ev] }));
+$('#btn-voice-test').onclick = () => say('Compra completa. Fuzil, colete e granadas.');
+$('#set-net').onchange = (e) => setSetting('net', e.target.checked);
+$('#set-net-host').onchange = (e) => setSetting('netHost', e.target.value.trim() || '1.1.1.1');
+$('#set-auto-update').onchange = (e) => setSetting('autoUpdate', e.target.checked);
 window.api.onSettings((s) => { settings = { ...s }; applySettings(); });
 $('#set-autostart').onchange = async (e) => { $('#set-autostart').checked = await window.api.setAutostart(e.target.checked); };
 $('#btn-check-update').onclick = async () => {
   $('#update-status').textContent = 'Procurando...';
   let u = null; try { u = await window.api.checkUpdate(); } catch {}
-  $('#update-status').textContent = u ? `Versão ${u.version} disponível.` : 'Você já tem a versão mais nova.';
-  if (u) { const el = $('#update'); el.textContent = `⬆️ Versão ${u.version} disponível. Clique para baixar.`; el.hidden = false; el.onclick = () => window.api.openUpdate(u.url); }
+  renderUpdate(u || { status: 'error', msg: 'Não consegui procurar agora. Tente de novo mais tarde.' });
 };
 
 // ---------- Início ----------
@@ -509,7 +545,9 @@ $('#btn-check-update').onclick = async () => {
   games.forEach((g) => $('#game-select').add(new Option(g.name, g.id)));
   settings = init.settings || {};
   clipsInfo = init.clips || null;
+  coachData = init.coach || null;
   applySettings();
+  renderUpdate(init.update); renderNet(init.net);
   renderDrops(init.drops || []); renderPower(init.power);
   $('#app-version').textContent = init.version ? `versão ${init.version}` : '';
   window.api.getAutostart().then((on) => { $('#set-autostart').checked = on; }).catch(() => {});
@@ -574,7 +612,7 @@ async function renderEvolution() {
   $('#evo-empty').hidden = !empty; $('#evo-empty').textContent = empty;
   $('#evo-chart-card').hidden = !evo.hasKd;
   $('#evo-maps-card').hidden = !evo.maps.length;
-  drawKd(); drawPlay(); renderMaps(); renderRecords(); renderGoals(); renderWeek();
+  drawKd(); drawPlay(); renderMaps(); renderRecords(); renderGoals(); renderWeek(); renderEvoCoach();
   $('#evo-src').textContent = evo.games.length ? 'Partidas do modo ao vivo e as anotadas na página do Claude.' : '';
 }
 $('#evo-game').onchange = (e) => { evoGame = e.target.value || null; renderEvolution(); };
@@ -726,24 +764,332 @@ window.api.onTurboPower(renderPower);
 
 // ---------- Clipes ----------
 let clipsInfo = null;
+const fmtSize = (b) => (b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1).replace('.', ',')} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
+const fmtClipWhen = (t) => new Date(t).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+const fmtSec = (sec) => fmt(Math.round(sec || 0));
+function clipLabel(x) { return `${x.gameName || (x.game ? nameOf(x.game) : '') || 'Clipe'}${x.kind === 'trim' ? ' · corte' : x.kind === 'discord' ? ' · Discord' : ''}${x.reason ? ` ${x.reason}` : ''}`; }
+function recTitle(c) { return c.status === 'on' ? `Ctrl+Shift+C salva os últimos ${c.seconds} s` : c.status === 'starting' ? 'Começando a gravar...' : c.status === 'error' ? 'Gravação parada' : settings.clips ? 'Começa quando um jogo abrir' : 'Gravação desligada'; }
 function renderClips() {
   const c = clipsInfo;
   $('#clips-card').hidden = !settings.clips;
+  if (c) {
+    const on = c.status === 'on';
+    for (const [pill, title, btn, msg] of [['#clips-pill', '#clips-title', '#btn-save-clip', '#clips-msg'], ['#gal-pill', '#gal-title', '#btn-gal-save', '#gal-msg']]) {
+      $(pill).classList.toggle('on', on);
+      $(pill).lastChild.textContent = on ? 'Gravando' : 'Clipes';
+      $(title).textContent = recTitle(c);
+      $(btn).disabled = !on;
+      $(msg).textContent = c.msg || (!settings.clips && pill === '#gal-pill' ? 'Ligue a gravação em Ajustes, Clipes. Os clipes salvos ficam aqui para ver, cortar e mandar.' : '');
+    }
+  }
   if (!settings.clips || !c) return;
-  const on = c.status === 'on';
-  $('#clips-pill').classList.toggle('on', on);
-  $('#clips-pill').lastChild.textContent = on ? 'Gravando' : 'Clipes';
-  $('#clips-title').textContent = on ? `Ctrl+Shift+C salva os últimos ${c.seconds} s` : c.status === 'starting' ? 'Começando a gravar...' : c.status === 'error' ? 'Gravação parada' : 'Começa quando um jogo abrir';
-  $('#btn-save-clip').disabled = !on;
-  $('#clips-msg').textContent = c.msg || '';
   $('#clips-list').innerHTML = '';
   c.list.forEach((x) => {
     const li = document.createElement('li');
-    li.innerHTML = `<span class="grow"></span><span class="muted">${Math.round(x.ms / 1000)} s</span><button>Abrir</button>`;
-    li.querySelector('.grow').textContent = `${new Date(x.at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · ${nameOf(x.game || '') || 'Clipe'}${x.reason ? ` ${x.reason}` : ''}`;
-    li.querySelector('button').onclick = () => window.api.openClip(x.file);
+    li.innerHTML = `<span class="grow"></span><span class="muted">${x.ms ? `${Math.round(x.ms / 1000)} s` : fmtSize(x.size)}</span><button>Ver</button>`;
+    li.querySelector('.grow').textContent = `${fmtClipWhen(x.at)} · ${clipLabel(x)}`;
+    li.querySelector('button').onclick = () => openPlayer(x);
     $('#clips-list').appendChild(li);
   });
+  $('#btn-clips-tab').hidden = !c.list.length;
 }
 $('#btn-save-clip').onclick = () => window.api.saveClip();
-window.api.onClips((c) => { clipsInfo = c; renderClips(); });
+$('#btn-gal-save').onclick = () => window.api.saveClip();
+$('#btn-clips-tab').onclick = () => showTab('clipes');
+$('#btn-gal-folder').onclick = () => window.api.openClipsFolder();
+window.api.onClips((c) => { clipsInfo = c; renderClips(); if (activeTab === 'clipes') renderGallery(); });
+
+// Galeria: miniaturas feitas aqui mesmo (um quadro do vídeo) e guardadas pelo app.
+let gallery = [];
+const thumbQueue = [];
+let thumbBusy = false;
+async function renderGallery() {
+  try { gallery = await window.api.clipsGallery(); } catch { gallery = []; }
+  const box = $('#gallery');
+  box.innerHTML = '';
+  $('#gal-empty').hidden = gallery.length > 0;
+  $('#gal-empty').textContent = settings.clips ? 'Nenhum clipe ainda. Durante o jogo, Ctrl+Shift+C salva os últimos segundos.' : 'Nenhum clipe ainda. Ligue a gravação em Ajustes, Clipes, e salve jogadas com Ctrl+Shift+C.';
+  gallery.forEach((x) => {
+    const el = document.createElement('button');
+    el.className = 'clip-tile';
+    el.innerHTML = `<div class="thumb">${x.thumb ? `<img src="${escapeHtml(x.thumb)}" alt="">` : '<svg><use href="#i-film"/></svg>'}<span class="dur"></span><span class="play"><svg><use href="#i-play"/></svg></span></div><div class="meta"><b></b><small></small></div>`;
+    el.querySelector('.dur').textContent = x.ms ? fmtSec(x.ms / 1000) : '';
+    el.querySelector('.dur').hidden = !x.ms;
+    el.querySelector('b').textContent = clipLabel(x);
+    el.querySelector('small').textContent = `${fmtClipWhen(x.at)} · ${fmtSize(x.size)}`;
+    el.onclick = () => openPlayer(x);
+    box.appendChild(el);
+    if (!x.thumb) { thumbQueue.push({ x, el }); }
+  });
+  pumpThumbs();
+}
+async function pumpThumbs() {
+  if (thumbBusy) return;
+  thumbBusy = true;
+  while (thumbQueue.length) {
+    const { x, el } = thumbQueue.shift();
+    const url = await makeThumb(x).catch(() => null);
+    if (url && el.isConnected) {
+      el.querySelector('.thumb').insertAdjacentHTML('afterbegin', `<img src="${escapeHtml(url)}" alt="">`);
+      const icon = el.querySelector('.thumb > svg'); if (icon) icon.remove();
+    }
+  }
+  thumbBusy = false;
+}
+function makeThumb(x) {
+  return new Promise((resolve) => {
+    const v = document.createElement('video');
+    v.muted = true; v.preload = 'auto'; v.crossOrigin = 'anonymous';
+    const done = (r) => { clearTimeout(t); v.removeAttribute('src'); v.load(); resolve(r); };
+    const t = setTimeout(() => done(null), 12000);
+    v.onloadedmetadata = () => { v.currentTime = Math.min(1.5, (isFinite(v.duration) ? v.duration : 3) / 3); };
+    v.onseeked = async () => {
+      try {
+        const c = document.createElement('canvas'); c.width = 320; c.height = Math.round(320 * (v.videoHeight / v.videoWidth || 9 / 16));
+        c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+        done(await window.api.clipThumb(x.id, c.toDataURL('image/jpeg', 0.72)));
+      } catch { done(null); }
+    };
+    v.onerror = () => done(null);
+    v.src = `gcclip://clip/${x.id}`;
+  });
+}
+
+// Player: assistir, marcar o começo e o fim, e salvar o corte ou a versão para o Discord.
+let pl = null;   // { clip, start, end, busy }
+const plVideo = $('#pl-video');
+function openPlayer(x) {
+  pl = { clip: x, start: 0, end: null, busy: false };
+  $('#pl-name').textContent = `${clipLabel(x)} · ${fmtClipWhen(x.at)}`;
+  $('#pl-msg').textContent = ''; $('#pl-progress').hidden = true;
+  plVideo.src = `gcclip://clip/${x.id}`;
+  $('#player').hidden = false;
+  if (document.body.classList.contains('compact')) window.api.setCompact(false);
+  plButtons(); plRender();
+}
+function closePlayer() {
+  if (pl && pl.busy) return;
+  plVideo.pause(); plVideo.removeAttribute('src'); plVideo.load();
+  $('#player').hidden = true; pl = null;
+}
+$('#pl-close').onclick = closePlayer;
+$('#player').addEventListener('click', (e) => { if (e.target.id === 'player') closePlayer(); });
+const plDur = () => (isFinite(plVideo.duration) && plVideo.duration > 0 ? plVideo.duration : (pl && pl.clip.ms ? pl.clip.ms / 1000 : 0));
+function plRange() { const d = plDur(); const end = pl.end == null ? d : Math.min(pl.end, d); return { start: Math.min(pl.start, end), end, d }; }
+function plRender() {
+  if (!pl) return;
+  const { start, end, d } = plRange();
+  $('#pl-sel').style.left = `${d ? (start / d) * 100 : 0}%`;
+  $('#pl-sel').style.width = `${d ? ((end - start) / d) * 100 : 100}%`;
+  $('#pl-head').style.left = `${d ? (plVideo.currentTime / d) * 100 : 0}%`;
+  const whole = start <= 0.05 && end >= d - 0.05;
+  $('#pl-range').textContent = d ? (whole ? `Vídeo inteiro · ${fmtSec(d)}` : `${fmtSec(start)} → ${fmtSec(end)} · ${Math.round(end - start)} s`) : '';
+}
+function plButtons() {
+  const busy = Boolean(pl && pl.busy);
+  ['#pl-trim', '#pl-discord', '#pl-copy', '#pl-del', '#pl-in', '#pl-out'].forEach((id) => { $(id).disabled = busy; });
+  $('#pl-close').disabled = busy;
+}
+plVideo.addEventListener('timeupdate', plRender);
+plVideo.addEventListener('loadedmetadata', plRender);
+$('#pl-bar').onclick = (e) => { const r = e.currentTarget.getBoundingClientRect(), d = plDur(); if (d) plVideo.currentTime = Math.max(0, Math.min(d, ((e.clientX - r.left) / r.width) * d)); };
+$('#pl-in').onclick = () => { pl.start = plVideo.currentTime; if (pl.end != null && pl.end <= pl.start + 0.5) pl.end = null; plRender(); };
+$('#pl-out').onclick = () => { pl.end = plVideo.currentTime; if (pl.end <= pl.start + 0.5) pl.start = 0; plRender(); };
+$('#pl-copy').onclick = async () => {
+  const ok = await window.api.clipCopy(pl.clip.id).catch(() => false);
+  $('#pl-msg').textContent = ok ? 'Copiado! Cole com Ctrl+V no Discord ou no WhatsApp para mandar o vídeo.' : 'Não consegui copiar. Use Mostrar na pasta e arraste o arquivo.';
+};
+$('#pl-show').onclick = () => window.api.clipShow(pl.clip.id);
+let delStep = 0;
+$('#pl-del').onclick = async () => {
+  if (!delStep) { delStep = 1; $('#pl-msg').textContent = 'Clique de novo na lixeira para apagar este clipe.'; setTimeout(() => { delStep = 0; }, 3000); return; }
+  delStep = 0;
+  const ok = await window.api.clipDelete(pl.clip.id).catch(() => false);
+  if (ok) { closePlayer(); renderGallery(); } else $('#pl-msg').textContent = 'Não consegui apagar o arquivo.';
+};
+$('#pl-trim').onclick = () => exportClip('trim');
+$('#pl-discord').onclick = () => exportClip('discord');
+
+// Exportar = tocar o trecho escolhido num vídeo escondido e gravar de novo (leva o tempo do trecho).
+function exportPlan(seconds, mode, w, h) {
+  const srcH = Math.min(1080, h || 720), ar = (w || 16) / (h || 9);
+  let height = srcH, vbps = srcH >= 1000 ? 8e6 : 5e6, abps = 128000;
+  if (mode === 'discord') {
+    abps = 96000;
+    vbps = Math.max(250000, Math.min(6e6, Math.floor((9 * 8 * 1024 * 1024) / Math.max(1, seconds)) - abps));
+    height = vbps >= 3e6 ? Math.min(srcH, 1080) : vbps >= 1.4e6 ? Math.min(srcH, 720) : vbps >= 700000 ? Math.min(srcH, 540) : Math.min(srcH, 360);
+  }
+  return { width: Math.round((height * ar) / 2) * 2, height, vbps, abps };
+}
+function pickMime() {
+  return ['video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'].find((t) => MediaRecorder.isTypeSupported(t)) || '';
+}
+async function exportClip(mode) {
+  if (!pl || pl.busy) return;
+  const { start, end } = plRange();
+  const seconds = end - start;
+  if (seconds < 1) { $('#pl-msg').textContent = 'Escolha um trecho com pelo menos 1 segundo.'; return; }
+  if (mode === 'trim' && start <= 0.05 && end >= plRange().d - 0.05) { $('#pl-msg').textContent = 'Marque o início e o fim do trecho (botões ⟦ e ⟧) antes de salvar o corte.'; return; }
+  pl.busy = true; plButtons(); plVideo.pause();
+  const clip = pl.clip;
+  $('#pl-progress').hidden = false; $('#pl-pbar').style.width = '0%';
+  $('#pl-ptext').textContent = mode === 'discord' ? 'Fazendo a versão para o Discord...' : 'Cortando...';
+  $('#pl-msg').textContent = 'O trecho toca escondido e é gravado de novo, então leva o tempo dele.';
+  let result = null;
+  try { result = await renderExport(clip, start, end, mode, (f) => { $('#pl-pbar').style.width = `${Math.round(f * 100)}%`; }); } catch { result = null; }
+  if (pl) { pl.busy = false; plButtons(); }
+  $('#pl-progress').hidden = true;
+  if (!result) { $('#pl-msg').textContent = 'Não consegui exportar este clipe.'; return; }
+  const mb = result.size / 1024 / 1024;
+  $('#pl-msg').textContent = mode === 'discord'
+    ? `Pronto: ${result.name} (${fmtSize(result.size)})${mb > 10 ? '. Ficou acima de 10 MB; corte um trecho menor.' : '. Clique em Copiar nele para colar no Discord.'}`
+    : `Pronto: ${result.name} (${fmtSize(result.size)}).`;
+  renderGallery();
+  // O player passa a mostrar o arquivo novo (para copiar ou mandar).
+  const fresh = (await window.api.clipsGallery().catch(() => [])).find((g) => g.id === result.id);
+  if (fresh && pl && pl.clip.id === clip.id) { const msg = $('#pl-msg').textContent; openPlayer(fresh); $('#pl-msg').textContent = msg; }
+}
+function renderExport(clip, start, end, mode, onProgress) {
+  return new Promise((resolve, reject) => {
+    const v = document.createElement('video');
+    v.crossOrigin = 'anonymous'; v.preload = 'auto'; v.playsInline = true;
+    v.src = `gcclip://clip/${clip.id}`;
+    let rec = null, ac = null, tick = 0, stopAt = end, finished = false;
+    const chunks = [];
+    const fail = (e) => { if (finished) return; finished = true; cleanup(); reject(e); };
+    const cleanup = () => { clearInterval(tick); try { v.pause(); } catch {} v.removeAttribute('src'); v.load(); if (ac) ac.close().catch(() => {}); };
+    v.onerror = () => fail(new Error('video'));
+    v.onloadedmetadata = () => { v.currentTime = start; };
+    v.onseeked = async () => {
+      if (rec) return;
+      try {
+        const plan = exportPlan(end - start, mode, v.videoWidth, v.videoHeight);
+        const canvas = document.createElement('canvas'); canvas.width = plan.width; canvas.height = plan.height;
+        const ctx = canvas.getContext('2d');
+        const stream = canvas.captureStream(30);
+        // O som passa pelo Web Audio (não sai nas caixas de som) e vai junto para a gravação.
+        try {
+          ac = new AudioContext();
+          const src = ac.createMediaElementSource(v), dest = ac.createMediaStreamDestination();
+          src.connect(dest);
+          dest.stream.getAudioTracks().forEach((t) => stream.addTrack(t));
+        } catch {}
+        const mime = pickMime();
+        rec = new MediaRecorder(stream, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: plan.vbps, audioBitsPerSecond: plan.abps });
+        rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+        rec.onstop = async () => {
+          if (finished) return;
+          finished = true; cleanup();
+          try {
+            const buf = await new Blob(chunks, { type: mime || 'video/webm' }).arrayBuffer();
+            resolve(await window.api.clipExport(clip.id, buf, { mode, mime: mime || 'video/webm', ms: Math.round((end - start) * 1000) }));
+          } catch (e) { reject(e); }
+        };
+        // Desenha 30 vezes por segundo com um timer (requestAnimationFrame para com o painel escondido).
+        const draw = () => {
+          ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+          onProgress(Math.max(0, Math.min(1, (v.currentTime - start) / (end - start))));
+          if ((v.currentTime >= stopAt || v.ended) && rec.state === 'recording') { clearInterval(tick); rec.stop(); }
+        };
+        ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+        rec.start(1000);
+        await v.play();
+        tick = setInterval(draw, 33);
+        // Garantia: se o vídeo travar, para depois do tempo do trecho mais uma folga.
+        setTimeout(() => { if (rec && rec.state === 'recording') rec.stop(); }, (end - start) * 1000 + 8000);
+      } catch (e) { fail(e); }
+    };
+  });
+}
+
+// ---------- Coach ----------
+let coachData = null;
+const RES_WORD = { V: 'Vitória', D: 'Derrota', E: 'Empate' };
+function tipText(t) { return t.ai || (t.local && t.local.text) || ''; }
+function renderCoach() {
+  const list = (coachData && coachData.list) || [];
+  const t = game ? list.find((x) => x.game === game.id) : list.find((x) => Date.now() - x.at < 6 * 3600000);
+  const show = settings.coach !== false && Boolean(t);
+  $('#coach-card').hidden = !show;
+  if (show) {
+    const m = t.match || {};
+    $('#coach-title').textContent = [t.gameName, RES_WORD[m.res], m.k != null ? `${m.k}/${m.a ?? '–'}/${m.d}` : '', m.map].filter(Boolean).join(' · ');
+    $('#coach-when').textContent = new Date(t.at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    $('#coach-text').textContent = t.status === 'thinking' ? `${t.local.text}` : tipText(t);
+    $('#coach-text').classList.toggle('thinking', t.status === 'thinking');
+    $('#coach-facts').innerHTML = (t.local.facts || []).map((f) => `<span>${escapeHtml(f)}</span>`).join('');
+    $('#coach-err').textContent = t.status === 'thinking' ? '🧠 O Claude está analisando a partida...' : t.err || (t.ai ? 'Dica do Claude.' : 'Dica rápida do app.');
+    $('#btn-coach-ask').onclick = async () => {
+      $('#coach-err').textContent = 'Abrindo o Claude...';
+      const ok = await window.api.coachAsk(t.id).catch(() => false);
+      $('#coach-err').textContent = ok ? 'Pergunta enviada na janela do Claude.' : 'Copiei a pergunta: cole na janela do Claude (Ctrl+V).';
+    };
+  }
+  renderEvoCoach();
+}
+function renderEvoCoach() {
+  const list = ((coachData && coachData.list) || []).filter((x) => x.game === evoGame && x.status !== 'thinking').slice(0, 6);
+  $('#evo-coach-card').hidden = !list.length;
+  $('#evo-coach').innerHTML = list.map((t) => {
+    const m = t.match || {};
+    return `<li><span class="when">${dateShort(t.at)}</span><span class="what">${escapeHtml([RES_WORD[m.res], m.k != null ? `${m.k}/${m.a ?? '–'}/${m.d}` : '', m.map].filter(Boolean).join(' · '))}</span><span class="why">${escapeHtml(tipText(t))}</span></li>`;
+  }).join('');
+}
+window.api.onCoach((c) => { coachData = c; renderCoach(); });
+
+// ---------- Avisos falados ----------
+// A voz é a do Windows (Microsoft Maria, Francisca ou Daniel, em português).
+let voice = null;
+function pickVoice() {
+  const all = speechSynthesis.getVoices();
+  voice = all.find((v) => /pt-BR/i.test(v.lang) && /Francisca|Thalita|Maria|Daniel|Google/i.test(v.name)) || all.find((v) => /pt-BR/i.test(v.lang)) || all.find((v) => /^pt/i.test(v.lang)) || null;
+  $('#voice-name').textContent = voice ? voice.name.replace(/^Microsoft\s+/, '').replace(/\s+Online.*$/, '') : all.length ? 'Sem voz em português: instale em Configurações do Windows, Hora e idioma, Fala.' : '';
+}
+try { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; } catch {}
+function say(text, volume) {
+  try {
+    if (!text) return;
+    const u = new SpeechSynthesisUtterance(String(text));
+    u.lang = 'pt-BR'; if (voice) u.voice = voice;
+    u.volume = volume ?? (settings.voiceVolume ?? 80) / 100; u.rate = 1.08;
+    window.__spoken = [...(window.__spoken || []), String(text)].slice(-20);
+    speechSynthesis.speak(u);
+  } catch {}
+}
+window.api.onSpeak((m) => say(m.text, m.volume));
+
+// ---------- Internet ----------
+let netData = null;
+function renderNet(n) {
+  if (n) netData = n;
+  const d = netData;
+  if (!d) return;
+  const r = d.recent || d.inet, g = d.gw;
+  const msTxt = (v) => (v == null ? '–' : v < 1 ? '<1 ms' : `${Math.round(v)} ms`);
+  $('#net-host').textContent = d.host ? `· ping para ${d.host}` : '';
+  $('#net-ping').textContent = r ? msTxt(r.last ?? r.avg) : '–';
+  $('#net-ping').className = !r || r.avg == null ? '' : r.avg <= 50 ? 'good' : r.avg <= 100 ? 'mid' : 'bad';
+  $('#net-loss').textContent = r ? `${Math.round(r.loss * 100)}%` : '–';
+  $('#net-loss').className = !r ? '' : r.loss === 0 ? 'good' : r.loss < 0.05 ? 'mid' : 'bad';
+  $('#net-jitter').textContent = r ? msTxt(r.jitter) : '–';
+  $('#net-gw').textContent = g ? `${msTxt(g.avg)}${g.loss ? ` · ${Math.round(g.loss * 100)}%` : ''}` : '–';
+  $('#net-diag').textContent = !d.enabled ? 'Medição desligada em Ajustes, Internet.' : !r ? (d.on ? 'Medindo...' : 'Mede enquanto um jogo está aberto ou com esta aba aberta.') : d.diag.text;
+  $('#net-diag').className = `small net-diag ${d.diag && d.diag.level ? d.diag.level : ''}`;
+  drawNet(d.series || []);
+}
+function drawNet(series) {
+  const c = $('#net-chart'), ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, c.width, c.height);
+  if (!series.length) return;
+  const now = Date.now(), span = 60000, max = Math.max(60, ...series.filter((p) => p.ms != null).map((p) => p.ms)) * 1.15;
+  const x = (t) => c.width - ((now - t) / span) * c.width, y = (ms) => c.height - 3 - (ms / max) * (c.height - 8);
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(0, y(50)); ctx.lineTo(c.width, y(50)); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = '#9aa1b2'; ctx.font = '9px "Segoe UI", sans-serif'; ctx.fillText('50 ms', 4, y(50) - 3);
+  ctx.strokeStyle = '#6aa8ff'; ctx.lineWidth = 2; ctx.beginPath();
+  let pen = false;
+  for (const p of series) { if (p.ms == null) { pen = false; continue; } const px = x(p.t), py = y(p.ms); if (pen) ctx.lineTo(px, py); else ctx.moveTo(px, py); pen = true; }
+  ctx.stroke();
+  ctx.fillStyle = '#ff6b6b';
+  for (const p of series) if (p.ms == null) ctx.fillRect(x(p.t) - 1.5, 2, 3, c.height - 4);
+}
+window.api.onNet(renderNet);

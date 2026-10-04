@@ -66,14 +66,14 @@ function buyAdvice(s) {
   if (!half || s.money == null || !s.team || s.watching || s.phase === 'warmup' || s.phase === 'gameover') return null;
   const r = s.round ?? 0, money = s.money;
   const full = s.team === 'CT' ? 5000 : 4300;
-  if (r === 0 || r === half) return { kind: 'pistol', text: 'Rodada de pistola: colete ou uma pistola melhor, mais uma granada.' };
-  if (r === half - 1 || r === 2 * half - 1) return { kind: 'all-in', text: 'Última rodada do tempo: gaste tudo, o dinheiro zera depois.' };
-  if (money >= full) return { kind: 'full', text: `Compra completa: fuzil, colete com capacete${s.team === 'CT' ? ', kit' : ''} e granadas.` };
-  if (money >= full - 700) return { kind: 'full', text: 'Quase completa: fuzil e colete, menos granadas.' };
+  if (r === 0 || r === half) return { kind: 'pistol', say: 'Rodada de pistola', text: 'Rodada de pistola: colete ou uma pistola melhor, mais uma granada.' };
+  if (r === half - 1 || r === 2 * half - 1) return { kind: 'all-in', say: 'Última rodada do tempo: gaste tudo', text: 'Última rodada do tempo: gaste tudo, o dinheiro zera depois.' };
+  if (money >= full) return { kind: 'full', say: 'Compra completa', text: `Compra completa: fuzil, colete com capacete${s.team === 'CT' ? ', kit' : ''} e granadas.` };
+  if (money >= full - 700) return { kind: 'full', say: 'Fuzil e colete', text: 'Quase completa: fuzil e colete, menos granadas.' };
   const nextIfLose = money + Math.min(3400, 1400 + 500 * (s.lossStreak || 0));
-  if (nextIfLose >= full) return { kind: 'eco', text: `Eco: guarde. Mesmo perdendo, na próxima você terá uns $${nextIfLose.toLocaleString('pt-BR')} para comprar tudo.` };
-  if (money >= 2000) return { kind: 'force', text: 'Force buy: SMG ou escopeta com colete, se o time também comprar.' };
-  return { kind: 'eco', text: 'Eco: fique com a pistola e jogue junto para pegar armas.' };
+  if (nextIfLose >= full) return { kind: 'eco', say: 'Eco, guarde o dinheiro', text: `Eco: guarde. Mesmo perdendo, na próxima você terá uns $${nextIfLose.toLocaleString('pt-BR')} para comprar tudo.` };
+  if (money >= 2000) return { kind: 'force', say: 'Force buy, se o time comprar', text: 'Force buy: SMG ou escopeta com colete, se o time também comprar.' };
+  return { kind: 'eco', say: 'Eco', text: 'Eco: fique com a pistola e jogue junto para pegar armas.' };
 }
 
 // Arquivo de configuração que o CS2 lê na pasta cfg ao abrir.

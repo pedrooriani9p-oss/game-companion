@@ -78,11 +78,16 @@ const DEFAULT_STATE = {
   history: [],      // todas as partidas, para a aba Evolução: [{ game, at, res, k, a, d, map, ... }]
   goals: [],        // metas: [{ id, game, type, target, doneAt?, warnedWeek? }]
   lastWeekly: 0,    // segunda-feira do último aviso de resumo da semana
+  coachTips: [],    // dicas do coach depois de cada partida: [{ id, game, at, local, ai, status }]
   settings: {
     opacity: 90, size: 'normal', cornerToasts: true, sound: true,
-    hud: false, hudCorner: 'tl', hudItems: { fps: true, perf: true, session: true, clock: false, timer: true, cs2: true, live: true },
+    hud: false, hudCorner: 'tl', hudItems: { fps: true, perf: true, session: true, clock: false, timer: true, cs2: true, live: true, coach: true, net: true },
     turboPower: false, turboAlerts: true, dailyLimitMin: 0,
     clips: false, clipSeconds: 30, clipAuto: true, clipQuality: '720',
+    coach: true, coachAi: true,
+    voice: true, voiceVolume: 80, voiceEvents: { buy: true, timers: true, coach: true, net: true, goals: true, fps: false },
+    net: true, netHost: '1.1.1.1',
+    autoUpdate: true,
   },
   reminders: [
     { id: 'agua', label: 'Beber água', everyMin: 30, enabled: true },
@@ -99,6 +104,7 @@ class Store {
       // Ajustes novos ganham o valor padrão sem perder os que o Pedro já mudou.
       this.state.settings = { ...DEFAULT_STATE.settings, ...(saved.settings || {}) };
       this.state.settings.hudItems = { ...DEFAULT_STATE.settings.hudItems, ...((saved.settings || {}).hudItems || {}) };
+      this.state.settings.voiceEvents = { ...DEFAULT_STATE.settings.voiceEvents, ...((saved.settings || {}).voiceEvents || {}) };
     } catch {
       this.state = structuredClone(DEFAULT_STATE);
     }

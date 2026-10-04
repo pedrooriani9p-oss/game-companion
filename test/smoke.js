@@ -394,4 +394,127 @@ const turbo = require('../src/turbo');
   assert(fixMp4Duration(Buffer.from('xx'), 10).equals(Buffer.from('xx')));
 }
 
+// ---------- Coach depois de cada partida ----------
+{
+  const coach = require('../src/coach');
+  const T = Date.UTC(2026, 9, 1, 20);
+  const past = [];
+  for (let i = 0; i < 8; i++) past.push({ game: 'cs2', at: T + i * 3600000, res: i % 2 ? 'V' : 'D', k: 18, a: 4, d: 15, mapLabel: 'Mirage' });
+  // Partida ruim: muitas mortes, poucos abates.
+  const bad = { game: 'cs2', at: T + 9 * 3600000, res: 'D', k: 8, a: 2, d: 22, mapLabel: 'Inferno', mode: 'competitive', score: [6, 13] };
+  let ctx = coach.context(bad, [...past, bad], 'cs2');
+  assert.strictEqual(ctx.prev.length, 8, 'só as anteriores');
+  assert.strictEqual(ctx.avgDeaths, 15);
+  let tip = coach.localTip(bad, ctx, 'cs2');
+  assert.strictEqual(tip.title, 'Morreu mais que o normal');
+  assert(tip.text.includes('22 vezes') && tip.text.includes('granada'), tip.text);
+  assert.strictEqual(tip.mood, 'bad');
+  assert(tip.facts[0].startsWith('K/D 0,36 (média 1,20)'), tip.facts[0]);
+  // Prompt para o Claude: só os números do Pedro.
+  const prompt = coach.coachPrompt(bad, ctx, 'Counter-Strike 2');
+  assert(prompt.includes('Derrota, 8/2/22') && prompt.includes('mapa Inferno') && prompt.includes('modo Competitivo') && prompt.includes('placar 6-13'), prompt);
+  assert(prompt.includes('Média das partidas anteriores: 8 partidas, K/D 1,20'), prompt);
+  assert(/máximo 2 frases/.test(prompt) && /Não invente/.test(prompt));
+  // Três derrotas seguidas: pausa.
+  const l1 = { game: 'cs2', at: T + 10 * 3600000, res: 'D', k: 17, a: 3, d: 15 }, l2 = { game: 'cs2', at: T + 11 * 3600000, res: 'D', k: 18, a: 3, d: 15 };
+  const all = [...past, bad, l1, l2];
+  tip = coach.localTip(l2, coach.context(l2, all, 'cs2'), 'cs2');
+  assert.strictEqual(tip.title, '3 derrotas seguidas');
+  // Partida muito boa.
+  const good = { game: 'cs2', at: T + 12 * 3600000, res: 'V', k: 30, a: 5, d: 10 };
+  tip = coach.localTip(good, coach.context(good, [...past, good], 'cs2'), 'cs2');
+  assert.strictEqual(tip.mood, 'good'); assert(tip.text.includes('acima da sua média'), tip.text);
+  // Valorant: poucos tiros na cabeça.
+  const vp = [1, 2, 3, 4].map((i) => ({ game: 'valorant', at: T + i, res: 'V', k: 15, d: 14, hs: 28 }));
+  const vm = { game: 'valorant', at: T + 100000, res: 'V', k: 15, d: 14, hs: 15, acs: 210, agent: 'Jett' };
+  tip = coach.localTip(vm, coach.context(vm, [...vp, vm], 'valorant'), 'valorant');
+  assert.strictEqual(tip.title, 'Poucos tiros na cabeça');
+  assert(coach.coachPrompt(vm, coach.context(vm, [...vp, vm], 'valorant'), 'VALORANT').includes('agente Jett'));
+  // Primeiras partidas e jogos sem K/D.
+  const first = { game: 'tf2', at: T, res: '', k: 12, a: null, d: 7 };
+  assert.strictEqual(coach.localTip(first, coach.context(first, [first], 'tf2'), 'tf2').title, 'Coach aprendendo');
+  const nokd = { game: 'x', at: T, res: 'V' };
+  assert.strictEqual(coach.localTip(nokd, coach.context(nokd, [nokd], 'x'), 'x').mood, 'neutral');
+  // Resposta do Claude limpa e curta.
+  assert.strictEqual(coach.cleanTip('**Coach:** Boa partida!\n- Jogue  perto do time.'), 'Boa partida! Jogue perto do time.');
+  assert(coach.cleanTip('a'.repeat(50) + '. ' + 'b '.repeat(300)).length <= 321);
+  assert.strictEqual(coach.cleanTip('   '), null);
+  assert(coach.followUp(bad, ctx, 'CS2', 'dica').includes('treino de 10 minutos'));
+}
+
+// ---------- Internet: ping e perda ----------
+{
+  const net = require('../src/net');
+  assert.deepStrictEqual(net.parsePingLine('Resposta de 1.1.1.1: bytes=32 tempo=12ms TTL=57'), { ms: 12 });
+  assert.deepStrictEqual(net.parsePingLine('Resposta de 192.168.0.1: bytes=32 tempo<1ms TTL=64'), { ms: 1 });
+  assert.deepStrictEqual(net.parsePingLine('Reply from 8.8.8.8: bytes=32 time=23ms TTL=117'), { ms: 23 });
+  assert.deepStrictEqual(net.parsePingLine('64 bytes from 1.1.1.1: icmp_seq=1 ttl=57 time=12.3 ms'), { ms: 12.3 });
+  assert.deepStrictEqual(net.parsePingLine('Esgotado o tempo limite do pedido.'), { lost: true });
+  assert.deepStrictEqual(net.parsePingLine('Request timed out.'), { lost: true });
+  assert.deepStrictEqual(net.parsePingLine('Resposta de 192.168.0.10: Host de destino inacess\xa1vel.'), { lost: true });
+  assert.deepStrictEqual(net.parsePingLine('no answer yet for icmp_seq=4'), { lost: true });
+  assert.strictEqual(net.parsePingLine('Disparando 1.1.1.1 com 32 bytes de dados:'), null);
+  assert.strictEqual(net.parsePingLine(''), null);
+  const st = new net.PingStats(), t0 = 1e6;
+  [20, 22, 21, null, 25, 20, 22, 21, 20, null].forEach((ms, i) => st.push(ms, t0 + i * 1000));
+  const sum = st.summary(60000, t0 + 9000);
+  assert.strictEqual(sum.n, 10); assert.strictEqual(sum.lost, 2); assert.strictEqual(sum.loss, 0.2); assert.strictEqual(sum.avg, 21);
+  assert.strictEqual(sum.last, null, 'a última foi perdida');
+  assert.strictEqual(net.trouble(sum), 'loss');
+  st.push(30, t0 + 70000);
+  assert.strictEqual(st.summary(60000, t0 + 70000).n, 1, 'janela de 1 minuto: as antigas saem');
+  assert.strictEqual(net.trouble({ n: 20, loss: 0, avg: 150, jitter: 5 }, 40), 'ping');
+  assert.strictEqual(net.trouble({ n: 20, loss: 0, avg: 150, jitter: 5 }, 140), null, 'ping alto, mas é o normal dele');
+  assert.strictEqual(net.trouble({ n: 5, loss: 1, avg: null, jitter: 0 }), null, 'poucas amostras');
+  assert.strictEqual(net.diagnose({ n: 20, loss: 0.1, avg: 40, jitter: 4 }, { n: 20, loss: 0.1, avg: 3 }).where, 'home');
+  assert.strictEqual(net.diagnose({ n: 20, loss: 0.1, avg: 40, jitter: 4 }, { n: 20, loss: 0, avg: 2 }).where, 'internet');
+  assert.strictEqual(net.diagnose({ n: 20, loss: 0, avg: 18, jitter: 2 }, { n: 20, loss: 0, avg: 1 }).level, 'ok');
+  assert(net.hostOk('1.1.1.1') && net.hostOk('google.com') && !net.hostOk('-t') && !net.hostOk('a b') && !net.hostOk("x';calc"));
+}
+
+// ---------- Galeria de clipes ----------
+{
+  const cl = require('../src/clips');
+  const dir = path.join('C:', 'Videos', 'Game Companion');
+  const files = [
+    { file: path.join(dir, 'CS2 2026-10-04 20-00-00.mp4'), size: 9e6, mtime: 1000 },
+    { file: path.join(dir, 'CS2 2026-10-04 20-00-00 (Discord).mp4'), size: 4e6, mtime: 3000 },
+    { file: path.join(dir, 'notas.txt'), size: 10, mtime: 5000 },
+  ];
+  const list = cl.mergeClips(files, [{ file: files[0].file.toUpperCase(), at: 2000, ms: 30000, game: 'cs2', reason: '(3 abates na rodada)' }]);
+  assert.strictEqual(list.length, 2, 'só vídeos');
+  assert.strictEqual(list[0].kind, 'discord'); assert.strictEqual(list[1].game, 'cs2'); assert.strictEqual(list[1].ms, 30000);
+  assert.strictEqual(list[1].id, cl.clipId(files[0].file)); assert.strictEqual(list[1].id.length, 16);
+  assert.deepStrictEqual(cl.parseRange('bytes=0-99', 1000), { start: 0, end: 99 });
+  assert.deepStrictEqual(cl.parseRange('bytes=900-', 1000), { start: 900, end: 999 });
+  assert.deepStrictEqual(cl.parseRange('bytes=-100', 1000), { start: 900, end: 999 });
+  assert.deepStrictEqual(cl.parseRange('bytes=0-5000', 1000), { start: 0, end: 999 });
+  assert.strictEqual(cl.parseRange('bytes=2000-', 1000), null);
+  assert.strictEqual(cl.parseRange('items=1-2', 1000), null);
+  assert.strictEqual(cl.exportName('C:/v/CS2 2026-10-04 20-00-00.mp4', 'trim', 'mp4'), 'CS2 2026-10-04 20-00-00 (corte).mp4');
+  assert.strictEqual(cl.exportName('C:/v/CS2 x (corte).mp4', 'discord', 'webm'), 'CS2 x (Discord).webm');
+}
+
+// ---------- Atualização automática ----------
+{
+  const up = require('../src/updater');
+  assert(up.newer('v1.1.0', '1.0.9') && !up.newer('1.0.0', '1.0.0') && up.newer('2.0.0', '1.10.3'));
+  const rel = { assets: [{ name: 'latest.yml', browser_download_url: 'https://x/latest.yml', size: 300 }, { name: 'GameCompanion-1.1.0.exe', browser_download_url: 'https://x/g.exe', size: 100328859, digest: 'sha256:' + 'ab'.repeat(32) }] };
+  const a = up.pickAsset(rel);
+  assert.deepStrictEqual(a, { name: 'GameCompanion-1.1.0.exe', size: 100328859, url: 'https://x/g.exe', sha256: 'ab'.repeat(32) });
+  assert.strictEqual(up.pickAsset({ assets: [] }), null);
+  assert(up.verify({ size: 100328859, sha256: 'ab'.repeat(32) }, a));
+  assert(!up.verify({ size: 100328858, sha256: 'ab'.repeat(32) }, a), 'tamanho diferente');
+  assert(!up.verify({ size: 100328859, sha256: 'cd'.repeat(32) }, a), 'SHA-256 diferente');
+  assert(up.verify({ size: 5e6, sha256: 'x' }, { size: 5e6, sha256: null }), 'sem digest, confere o tamanho');
+}
+
+// ---------- Dica de compra falada (CS2) ----------
+{
+  const { buyAdvice } = require('../src/cs2');
+  const b = buyAdvice({ mode: 'competitive', money: 6000, team: 'CT', round: 5, phase: 'live' });
+  assert.strictEqual(b.say, 'Compra completa');
+  assert.strictEqual(buyAdvice({ mode: 'competitive', money: 800, team: 'T', round: 0, phase: 'live' }).say, 'Rodada de pistola');
+}
+
 console.log('OK: todos os testes passaram');
