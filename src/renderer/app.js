@@ -501,7 +501,7 @@ function applySettings() {
   if (document.activeElement !== $('#set-net-host')) $('#set-net-host').value = settings.netHost || '1.1.1.1';
   $('#set-auto-update').checked = settings.autoUpdate !== false;
   $('#set-site').checked = settings.siteSync !== false;
-  $('#set-quick-warm').checked = settings.quickWarm !== false;
+  $('#set-quick-warm').checked = settings.quickWarm === true;
   $('#set-quick-warm').disabled = settings.siteSync === false;
   renderClips(); renderCoach();
 }
@@ -556,9 +556,11 @@ $('#btn-check-update').onclick = async () => {
   renderPlaytime(); renderFpsHistory(); renderSessions(); renderCs2(); renderLive();
   refreshStats();
   setInterval(tick, 1000);
-  setInterval(refreshStats, 2000);
-  setInterval(refreshFps, 1000);
-  setInterval(refreshState, 30000);
+  // Com o painel escondido (jogando, na bandeja) nada disso precisa rodar; ao voltar, atualiza na hora.
+  setInterval(() => { if (!document.hidden) refreshStats(); }, 2000);
+  setInterval(() => { if (!document.hidden) refreshFps(); }, 1000);
+  setInterval(() => { if (!document.hidden) refreshState(); }, 30000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { refreshStats(); refreshFps(); refreshState(); } });
   setInterval(() => { if (activeTab === 'turbo' && !document.hidden) refreshProcs(); }, 5000);
   window.api.onHistory(() => { if (activeTab === 'evolucao') renderEvolution(); refreshState(); });
 })();

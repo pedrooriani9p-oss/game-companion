@@ -89,7 +89,7 @@ const DEFAULT_STATE = {
     coach: true, coachAi: true,
     net: true, netHost: '1.1.1.1',
     autoUpdate: true,
-    siteSync: true, quickWarm: true,
+    siteSync: true, quickWarm: false,
   },
   reminders: [
     { id: 'agua', label: 'Beber água', everyMin: 30, enabled: true },
@@ -107,13 +107,15 @@ class Store {
       this.state.settings = { ...DEFAULT_STATE.settings, ...(saved.settings || {}) };
       this.state.settings.hudItems = { ...DEFAULT_STATE.settings.hudItems, ...((saved.settings || {}).hudItems || {}) };
       for (const k of ['voice', 'voiceVolume', 'voiceEvents']) delete this.state.settings[k]; // a voz foi retirada do app (1.2.1)
+      // 1.2.2 (app mais leve): o Claude deixa de abrir sozinho ao começar o jogo; quem quiser liga de novo em Ajustes.
+      if (!(saved.settings || {}).perfV1) { this.state.settings.quickWarm = false; this.state.settings.perfV1 = true; }
     } catch {
       this.state = structuredClone(DEFAULT_STATE);
     }
   }
   save() {
     fs.mkdirSync(path.dirname(this.file), { recursive: true });
-    fs.writeFileSync(this.file, JSON.stringify(this.state, null, 2));
+    fs.writeFileSync(this.file, JSON.stringify(this.state));
   }
   addPlaytime(gameId, seconds) {
     this.state.playtime[gameId] = (this.state.playtime[gameId] || 0) + seconds;

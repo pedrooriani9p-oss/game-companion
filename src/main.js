@@ -178,6 +178,7 @@ public class GcFg {
   [StructLayout(LayoutKind.Sequential)] public struct MONITORINFO { public int cbSize; public RECT rcMonitor; public RECT rcWork; public uint dwFlags; }
 }
 "@
+$lastPid = -1; $exe = $null; $desc = $null
 while ($true) {
   try {
     $h = [GcFg]::GetForegroundWindow(); $fpid = 0; [void][GcFg]::GetWindowThreadProcessId($h, [ref]$fpid)
@@ -185,10 +186,13 @@ while ($true) {
     $mi = New-Object GcFg+MONITORINFO; $mi.cbSize = [Runtime.InteropServices.Marshal]::SizeOf($mi)
     [void][GcFg]::GetMonitorInfo([GcFg]::MonitorFromWindow($h, 2), [ref]$mi)
     $sb = New-Object Text.StringBuilder 256; [void][GcFg]::GetWindowText($h, $sb, 256)
-    $p = Get-Process -Id $fpid -ErrorAction SilentlyContinue
-    $exe = $null; $desc = $null
-    try { $exe = $p.Path } catch {}
-    if ($exe) { try { $desc = (Get-Item -LiteralPath $exe).VersionInfo.FileDescription } catch {} } elseif ($p) { $exe = "$($p.ProcessName).exe" }
+    if ($fpid -ne $lastPid -or -not $exe) {
+      $lastPid = $fpid
+      $p = Get-Process -Id $fpid -ErrorAction SilentlyContinue
+      $exe = $null; $desc = $null
+      try { $exe = $p.Path } catch {}
+      if ($exe) { try { $desc = (Get-Item -LiteralPath $exe).VersionInfo.FileDescription } catch {} } elseif ($p) { $exe = "$($p.ProcessName).exe" }
+    }
     $full = ($r.L -le $mi.rcMonitor.L) -and ($r.T -le $mi.rcMonitor.T) -and ($r.R -ge $mi.rcMonitor.R) -and ($r.B -ge $mi.rcMonitor.B)
     [Console]::Out.WriteLine((@{ exe = $exe; title = $sb.ToString(); fullscreen = $full; description = $desc } | ConvertTo-Json -Compress))
   } catch { [Console]::Out.WriteLine('{}') }
@@ -207,11 +211,14 @@ function startForegroundWatch() {
   fgProc.on('exit', () => { fgProc = null; setTimeout(startForegroundWatch, 10000); });
 }
 
+// O tempo de jogo soma a cada 5 s, mas o arquivo só é regravado a cada 30 s (ou quando o jogo muda e ao fechar o app).
+let lastSave = 0;
+function saveSoon() { if (Date.now() - lastSave < 30000) return; lastSave = Date.now(); store.save(); }
 let manualGame = false;
 async function pollGame() {
   if (manualGame) {
     if (currentGame) store.addPlaytime(currentGame.id, POLL_MS / 1000);
-    store.save();
+    saveSoon();
     return;
   }
   const [procs, steamApp] = await Promise.all([listProcesses(), steamRunningApp()]);
@@ -235,18 +242,32 @@ async function pollGame() {
     if (found) { store.startSession(found.id); store.state.names[found.id] = found.name; }
     currentGame = found;
     onGameChanged();
+    store.save(); lastSave = Date.now();
+    return;
   }
-  store.save();
+  saveSoon();
+}
+
+// Com um jogo aberto, o app e as janelas dele ficam com prioridade abaixo do normal: nunca disputam o processador com o jogo.
+let lowPrio = false;
+function syncPriority() {
+  const want = Boolean(currentGame);
+  if (!want && !lowPrio) return;
+  const level = want ? os.constants.priority.PRIORITY_BELOW_NORMAL : os.constants.priority.PRIORITY_NORMAL;
+  const pids = new Set([process.pid]);
+  try { for (const m of app.getAppMetrics()) pids.add(m.pid); } catch {}
+  for (const pid of pids) { try { os.setPriority(pid, level); } catch {} }
+  lowPrio = want;
 }
 
 // Tudo que muda quando o jogo muda (ou fecha).
 function onGameChanged() {
   send('game-changed', currentGame);
-  syncFps(); syncLive(); syncHud(); syncClips(); syncPower(); syncNet();
+  syncFps(); syncLive(); syncHud(); syncClips(); syncPower(); syncNet(); syncPriority();
   drops.reset(); turboDrops = []; send('turbo-drop', null);
   hudCoach = null;
   liveSync();
-  if (currentGame && siteOn() && store.state.settings.quickWarm !== false) setTimeout(() => { if (currentGame && !claudeWin) { openClaude({ show: false }); touchBridge(); } }, 20000);
+  if (currentGame && siteOn() && store.state.settings.quickWarm === true) setTimeout(() => { if (currentGame && !claudeWin) { openClaude({ show: false }); touchBridge(); } }, 20000);
   if (currentGame) { const id = currentGame.id; setTimeout(() => { if (currentGame && currentGame.id === id) coachRemind(id); }, 8000); }
 }
 
@@ -993,33 +1014,45 @@ async function coverFor(g) {
 
 // ---------- Desempenho do PC (amostra única, usada pelo painel, pelo HUD e pelo Turbo) ----------
 let lastSys = null;
-let sysBusy = null;
+// CPU e memória saem do próprio Node (quase de graça). Placa de vídeo e temperaturas vêm da biblioteca, que no Windows
+// abre PowerShell/nvidia-smi a cada consulta: por isso são lidas devagar e guardadas entre uma leitura e outra.
+let cpuPrev = null;
+function cpuLoad() {
+  const t = os.cpus().reduce((a, c) => { const x = c.times; a.idle += x.idle; a.total += x.user + x.nice + x.sys + x.idle + x.irq; return a; }, { idle: 0, total: 0 });
+  const prev = cpuPrev; cpuPrev = t;
+  if (!prev || t.total <= prev.total) return lastSys ? lastSys.cpu : 0;
+  return Math.max(0, Math.min(100, Math.round(100 * (1 - (t.idle - prev.idle) / (t.total - prev.total)))));
+}
+const slowSys = { at: 0, busy: false, cpuTemp: null, gpu: {} };
+async function refreshSlowSys(everyMs) {
+  if (slowSys.busy || Date.now() - slowSys.at < everyMs) return;
+  slowSys.busy = true;
+  try {
+    const [temp, gfx] = await Promise.all([si.cpuTemperature().catch(() => ({})), si.graphics().catch(() => ({ controllers: [] }))]);
+    const list = gfx.controllers || [];
+    slowSys.gpu = list.find((c) => c.utilizationGpu != null) || list[0] || {};
+    slowSys.cpuTemp = temp.main || null;
+    checkHeat({ cpuTemp: slowSys.cpuTemp, gpuTemp: slowSys.gpu.temperatureGpu ?? null });
+  } catch {}
+  slowSys.busy = false; slowSys.at = Date.now();
+}
+const sysWatched = () => Boolean((win && !win.isDestroyed() && win.isVisible()) || (hudWin && !hudWin.isDestroyed() && hudWin.isVisible()));
 function sampleSystem() {
-  if (sysBusy) return sysBusy;
-  sysBusy = (async () => {
-    try {
-      const [load, mem, temp, gfx] = await Promise.all([
-        si.currentLoad(), si.mem(), si.cpuTemperature(), si.graphics().catch(() => ({ controllers: [] }))
-      ]);
-      const gpu = gfx.controllers.find((c) => c.utilizationGpu != null) || gfx.controllers[0] || {};
-      lastSys = {
-        at: Date.now(),
-        cpu: Math.round(load.currentLoad),
-        cpuTemp: temp.main || null,
-        ramUsed: mem.active / 1024 ** 3,
-        ramTotal: mem.total / 1024 ** 3,
-        gpuName: gpu.model || null,
-        gpu: gpu.utilizationGpu ?? null,
-        gpuTemp: gpu.temperatureGpu ?? null,
-        vramUsed: gpu.memoryUsed != null ? gpu.memoryUsed / 1024 : null,
-        vramTotal: gpu.memoryTotal != null ? gpu.memoryTotal / 1024 : null
-      };
-      checkHeat(lastSys);
-    } catch {}
-    sysBusy = null;
-    return lastSys;
-  })();
-  return sysBusy;
+  const total = os.totalmem(), gpu = slowSys.gpu;
+  refreshSlowSys(sysWatched() ? 10000 : 30000);
+  lastSys = {
+    at: Date.now(),
+    cpu: cpuLoad(),
+    cpuTemp: slowSys.cpuTemp,
+    ramUsed: (total - os.freemem()) / 1024 ** 3,
+    ramTotal: total / 1024 ** 3,
+    gpuName: gpu.model || null,
+    gpu: gpu.utilizationGpu ?? null,
+    gpuTemp: gpu.temperatureGpu ?? null,
+    vramUsed: gpu.memoryUsed != null ? gpu.memoryUsed / 1024 : null,
+    vramTotal: gpu.memoryTotal != null ? gpu.memoryTotal / 1024 : null
+  };
+  return lastSys;
 }
 
 // ---------- Evolução: histórico de partidas, metas e resumo da semana ----------
@@ -1154,7 +1187,11 @@ function placeHud(width, height) {
 }
 function syncHud() {
   if (currentGame == null) hudOff = false;
-  if (!hudWanted()) { if (hudWin && !hudWin.isDestroyed()) hudWin.hide(); return; }
+  if (!hudWanted()) {
+    // Sem jogo (ou HUD desligado) a janela do HUD sai da memória; só escondida com Ctrl+Shift+H, durante o jogo.
+    if (hudWin && !hudWin.isDestroyed()) { if (store.state.settings.hud && currentGame) hudWin.hide(); else hudWin.destroy(); }
+    return;
+  }
   const w = hudWindow();
   if (!w.webContents.isLoading() && !w.isVisible()) w.showInactive();
   hudTick();
@@ -1204,7 +1241,7 @@ async function onFpsDrop(drop) {
 function checkHeat(sys) {
   const hot = (sys.cpuTemp || 0) >= 90 || (sys.gpuTemp || 0) >= 85;
   heatCount = hot ? heatCount + 1 : 0;
-  if (heatCount >= 5 && currentGame && store.state.settings.turboAlerts !== false && Date.now() - lastHeatToast > 10 * 60000) {
+  if (heatCount >= 3 && currentGame && store.state.settings.turboAlerts !== false && Date.now() - lastHeatToast > 10 * 60000) {
     lastHeatToast = Date.now();
     const parts = [];
     if ((sys.cpuTemp || 0) >= 90) parts.push(`processador a ${Math.round(sys.cpuTemp)}°C`);
@@ -1469,7 +1506,7 @@ function coachAsk(id) {
 }
 
 // ---------- Pergunta rápida (Ctrl+Shift+A): caixinha por cima do jogo; o Claude responde em texto (e no HUD) ----------
-let quickWin = null, quickBusy = false, quickSize = 170;
+let quickWin = null, quickBusy = false, quickSize = 170, quickHiddenAt = 0;
 const quickChat = new bridge.QuickChat();
 // O jogo da pergunta: o que está aberto ou, se o Pedro acabou de fechar, o da última sessão.
 function quickGame() {
@@ -1491,6 +1528,7 @@ function placeQuick(height = quickSize) {
 }
 function quickWindow() {
   if (quickWin && !quickWin.isDestroyed()) return quickWin;
+  quickHiddenAt = Date.now();
   quickWin = new BrowserWindow({
     width: 520, height: quickSize, frame: false, transparent: true, resizable: false, skipTaskbar: true, alwaysOnTop: true, show: false, hasShadow: false,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), backgroundThrottling: false },
@@ -1500,6 +1538,7 @@ function quickWindow() {
   quickWin.loadFile(path.join(__dirname, 'renderer', 'quick.html'));
   // Voltou para o jogo: a caixinha some (a resposta ainda sai no HUD).
   quickWin.on('blur', () => setTimeout(() => { if (quickWin && !quickWin.isDestroyed() && quickWin.isVisible() && !quickWin.isFocused()) quickWin.hide(); }, 250));
+  quickWin.on('hide', () => { quickHiddenAt = Date.now(); });
   quickWin.on('closed', () => { quickWin = null; });
   return quickWin;
 }
@@ -1536,9 +1575,11 @@ async function askQuick(question) {
 }
 // A janela do Claude escondida pesa no PC: sem uso (e sem jogo aberto com ela "pronta"), fecha sozinha.
 setInterval(() => {
+  // A caixinha da pergunta rápida também sai da memória depois de um tempo escondida.
+  if (quickWin && !quickWin.isDestroyed() && !quickWin.isVisible() && !quickBusy && Date.now() - quickHiddenAt > 3 * 60000) quickWin.destroy();
   if (!claudeWin || claudeWin.isDestroyed() || claudeUserShown || delivering || quickBusy) return;
-  const keep = currentGame && siteOn() && store.state.settings.quickWarm !== false;
-  if (!keep && Date.now() - lastBridgeUse > 12 * 60000) claudeWin.destroy();
+  const keep = currentGame && siteOn() && store.state.settings.quickWarm === true;
+  if (!keep && Date.now() - lastBridgeUse > 4 * 60000) claudeWin.destroy();
 }, 60000);
 
 // ---------- Internet: ping e perda de pacotes, até o roteador e até a internet ----------
@@ -1872,7 +1913,7 @@ function registerIpc() {
   ipcMain.handle('open-update', (_e, url) => { if (/^https:\/\/github\.com\//.test(url)) shell.openExternal(url); });
   ipcMain.handle('hide', () => win.hide());
   ipcMain.handle('show', () => win.showInactive());
-  ipcMain.handle('system-stats', async () => (lastSys && Date.now() - lastSys.at < 1500 ? lastSys : sampleSystem()));
+  ipcMain.handle('system-stats', async () => (lastSys && (Date.now() - lastSys.at < 1500 || !sysWatched()) ? lastSys : sampleSystem()));
 }
 
 // Só um Game Companion aberto: abrir de novo mostra o painel que já está rodando.
@@ -1898,9 +1939,11 @@ app.whenReady().then(() => {
   setInterval(sampleFps, 2000);
   migrateHistory();
   syncPower();
-  // O PC é medido a cada 2 s enquanto um jogo está aberto (Turbo e HUD) ou o painel está à vista.
-  setInterval(() => { if (currentGame || (win && win.isVisible())) sampleSystem(); }, 2000);
+  // O PC é medido a cada 2 s só enquanto alguém olha (painel ou HUD à vista); com o jogo aberto e nada à vista, a cada 10 s (para o aviso de calor).
+  let sysTick = 0;
+  setInterval(() => { if (sysWatched() || (currentGame && ++sysTick % 5 === 0)) sampleSystem(); }, 2000);
   setInterval(hudTick, 1000);
+  setInterval(() => { if (currentGame) syncPriority(); }, 30000);   // janelas abertas no meio do jogo também entram
   setInterval(() => { checkGoals(); checkDailyLimit(); }, 60000);
   setInterval(liveSync, 20000);
   setTimeout(weeklyNotice, 30000); setInterval(weeklyNotice, 3600000);

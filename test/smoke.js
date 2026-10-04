@@ -519,6 +519,19 @@ const turbo = require('../src/turbo');
   assert(!('voice' in new core.Store(path.join(os.tmpdir(), `gc-voz-novo-${Date.now()}.json`)).state.settings));
 }
 
+// ---------- App mais leve (1.2.2): "Claude pronto durante o jogo" vem desligado ----------
+{
+  const f = path.join(os.tmpdir(), `gc-leve-${Date.now()}.json`);
+  fs.writeFileSync(f, JSON.stringify({ settings: { opacity: 70, quickWarm: true } }));
+  const st = new core.Store(f);
+  assert.strictEqual(st.state.settings.quickWarm, false, 'quem veio da 1.2.1 passa para desligado');
+  assert.strictEqual(st.state.settings.opacity, 70);
+  st.state.settings.quickWarm = true; st.save();
+  assert.strictEqual(new core.Store(f).state.settings.quickWarm, true, 'quem ligar de novo mantém ligado');
+  assert.strictEqual(new core.Store(path.join(os.tmpdir(), `gc-leve-novo-${Date.now()}.json`)).state.settings.quickWarm, false, 'instalação nova: desligado');
+  assert(!fs.readFileSync(f, 'utf8').includes('\n'), 'arquivo de dados compacto');
+}
+
 // ---------- Dica de compra (CS2) ----------
 {
   const { buyAdvice } = require('../src/cs2');

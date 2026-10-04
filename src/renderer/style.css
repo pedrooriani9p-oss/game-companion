@@ -35,9 +35,11 @@ body:has(.overlay:not([hidden])) .drag { -webkit-app-region: no-drag; }
 #btn-hide:hover { background: rgba(255,107,107,0.25); border-color: rgba(255,107,107,0.5); }
 #game-name { font-size: 18px; font-weight: 700; letter-spacing: -.2px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 8px rgba(0,0,0,0.6); }
 .hero-meta { display: flex; align-items: center; gap: 8px; font-size: 12px; color: rgba(255,255,255,0.78); font-variant-numeric: tabular-nums; }
-#live-dot, #c-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: 0 0 auto; }
-body.playing #live-dot, body.playing #c-dot { background: var(--accent); box-shadow: 0 0 0 0 rgba(90,209,160,0.6); animation: ping 2s infinite; }
-@keyframes ping { 70% { box-shadow: 0 0 0 7px rgba(90,209,160,0); } 100% { box-shadow: 0 0 0 0 rgba(90,209,160,0); } }
+#live-dot, #c-dot { position: relative; width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: 0 0 auto; }
+body.playing #live-dot, body.playing #c-dot { background: var(--accent); }
+/* O anel que pulsa só usa transform e opacidade (a placa de vídeo cuida disso sem redesenhar a tela a cada quadro). */
+body.playing #live-dot::after, body.playing #c-dot::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: var(--accent); opacity: 0; will-change: transform, opacity; animation: ping 2s infinite; }
+@keyframes ping { 0% { transform: scale(1); opacity: .55; } 70%, 100% { transform: scale(2.8); opacity: 0; } }
 #hero-fps:not(:empty)::before { content: '·'; margin-right: 8px; color: rgba(255,255,255,0.4); }
 
 /* ---------- Abas ---------- */
